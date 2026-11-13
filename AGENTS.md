@@ -98,7 +98,7 @@ Scenario controls are optional development utilities. Scenario changes affect ne
 
 Start the next task only when explicitly requested. Report a check as passing only after executing it successfully.
 
-With a supported Node.js version and npm available, run `npm ci` to install from the lockfile and `npm run dev` to start the application. Run `npm run typecheck` for strict TypeScript checks and `npm run build` for the production build. Use `npm run preview` to serve the built application locally.
+With a supported Node.js version and npm available, run `npm ci` to install from the lockfile and `npm run dev` to start the application. Run `npm run lint` for ESLint, `npm run typecheck` for strict TypeScript checks, and `npm run build` for the production build. Use `npm run preview` to serve the built application locally.
 
 ## Task completion format
 
