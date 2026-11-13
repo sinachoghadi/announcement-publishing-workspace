@@ -1,4 +1,5 @@
 import type { PublicationOperation } from '../../../mocks'
+import { selectHasPublished } from './publicationSelectors'
 import type {
   AnnouncementId,
   OperationId,
@@ -30,13 +31,6 @@ function findAnnouncementId(state: PublicationState, operationId: OperationId) {
   for (const [announcementId, activeId] of state.activeOperationIdByAnnouncementId) {
     if (activeId === operationId) return announcementId
   }
-}
-
-function hasPublished(state: PublicationState, announcementId: AnnouncementId) {
-  for (const operation of state.operationsById.values()) {
-    if (operation.announcementId === announcementId && operation.status === 'published') return true
-  }
-  return false
 }
 
 function setRequest(
@@ -127,7 +121,7 @@ export function publicationReducer(state: PublicationState, action: PublicationA
   switch (action.type) {
     case 'operationStarted': {
       const { announcementId, operationId } = action
-      if (findAnnouncementId(state, operationId) !== undefined || hasPublished(state, announcementId)) {
+      if (findAnnouncementId(state, operationId) !== undefined || selectHasPublished(state, announcementId)) {
         return state
       }
 
@@ -154,7 +148,7 @@ export function publicationReducer(state: PublicationState, action: PublicationA
         (operation && operation.status !== 'processing') ||
         request?.status === 'publishing' ||
         request?.status === 'checking' ||
-        hasPublished(state, announcementId)
+        selectHasPublished(state, announcementId)
       ) return state
 
       return setRequest(state, operationId, { status: 'publishing', requestId })

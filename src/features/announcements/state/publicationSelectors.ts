@@ -1,0 +1,80 @@
+import type { PublicationOperation } from '../../../mocks'
+import type {
+  AnnouncementId,
+  OperationId,
+  PublicationRequestState,
+  PublicationState,
+} from './publicationTypes'
+
+export type PublicationDisplayStatus = PublicationOperation['status'] | 'not-published' | 'unconfirmed'
+
+export function selectActiveOperationId(state: PublicationState, announcementId: AnnouncementId) {
+  return state.activeOperationIdByAnnouncementId.get(announcementId)
+}
+
+export function selectOperation(state: PublicationState, operationId: OperationId) {
+  return state.operationsById.get(operationId)
+}
+
+export function selectActiveOperation(state: PublicationState, announcementId: AnnouncementId) {
+  const operationId = selectActiveOperationId(state, announcementId)
+  return operationId === undefined ? undefined : selectOperation(state, operationId)
+}
+
+export function selectPublicationStatus(state: PublicationState, announcementId: AnnouncementId) {
+  return selectActiveOperation(state, announcementId)?.status
+}
+
+export function selectPublicationRequest(
+  state: PublicationState,
+  operationId: OperationId,
+): PublicationRequestState | undefined {
+  return state.requestsByOperationId.get(operationId)
+}
+
+export function selectPublicationRequestError(state: PublicationState, operationId: OperationId) {
+  const request = selectPublicationRequest(state, operationId)
+  if (request?.status === 'error' || request?.status === 'unconfirmed') return request.message
+}
+
+export function selectPublicationDisplayStatus(
+  state: PublicationState,
+  announcementId: AnnouncementId,
+): PublicationDisplayStatus {
+  const operationId = selectActiveOperationId(state, announcementId)
+  if (operationId === undefined) return 'not-published'
+
+  const status = selectOperation(state, operationId)?.status
+  if (status === 'published' || status === 'rejected') return status
+
+  const request = selectPublicationRequest(state, operationId)
+  if (request?.status === 'error' || request?.status === 'unconfirmed') return 'unconfirmed'
+
+  return status ?? 'unconfirmed'
+}
+
+export function selectHasPublished(state: PublicationState, announcementId: AnnouncementId) {
+  for (const operation of state.operationsById.values()) {
+    if (operation.announcementId === announcementId && operation.status === 'published') return true
+  }
+  return false
+}
+
+export function selectCanPublish(state: PublicationState, announcementId: AnnouncementId) {
+  return selectActiveOperationId(state, announcementId) === undefined && !selectHasPublished(state, announcementId)
+}
+
+export function selectCanCheckStatus(state: PublicationState, announcementId: AnnouncementId) {
+  const operationId = selectActiveOperationId(state, announcementId)
+  if (operationId === undefined) return false
+
+  const status = selectOperation(state, operationId)?.status
+  if (status === 'published' || status === 'rejected') return false
+
+  // An operation can finish while its original publish response is still in flight.
+  return selectPublicationRequest(state, operationId)?.status !== 'checking'
+}
+
+export function selectCanRetry(state: PublicationState, announcementId: AnnouncementId) {
+  return selectPublicationStatus(state, announcementId) === 'rejected' && !selectHasPublished(state, announcementId)
+}
