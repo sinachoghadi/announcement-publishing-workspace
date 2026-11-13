@@ -43,6 +43,24 @@ function setRequest(
   return { ...state, requestsByOperationId }
 }
 
+function matchesSnapshotIdentity(
+  snapshot: PublicationOperation,
+  operationId: OperationId,
+  announcementId: AnnouncementId | undefined,
+) {
+  return snapshot.operationId === operationId &&
+    (announcementId === undefined || snapshot.announcementId === announcementId)
+}
+
+function canAcceptSnapshot(
+  snapshot: PublicationOperation,
+  current: PublicationOperation | undefined,
+  announcementId: AnnouncementId | undefined,
+) {
+  return matchesSnapshotIdentity(snapshot, current?.operationId ?? snapshot.operationId, announcementId) &&
+    (current === undefined || snapshot.version > current.version)
+}
+
 function mergeSnapshots(
   state: PublicationState,
   snapshots: readonly PublicationOperation[],
@@ -51,11 +69,10 @@ function mergeSnapshots(
   let requests: Map<OperationId, PublicationRequestState> | undefined
 
   for (const snapshot of snapshots) {
-    const { operationId, announcementId, version } = snapshot
+    const { operationId } = snapshot
     const current = (operations ?? state.operationsById).get(operationId)
     const owner = current?.announcementId ?? findAnnouncementId(state, operationId)
-    if (owner !== undefined && owner !== announcementId) continue
-    if (current && current.version >= version) continue
+    if (!canAcceptSnapshot(snapshot, current, owner)) continue
 
     operations ??= new Map(state.operationsById)
     operations.set(operationId, snapshot)
@@ -95,17 +112,22 @@ function restoreOperations(
     }
   }
 
-  const activeOperationIdByAnnouncementId = new Map(state.activeOperationIdByAnnouncementId)
+  let activeOperationIdByAnnouncementId: Map<AnnouncementId, OperationId> | undefined
   for (const [announcementId, operation] of latest) {
-    const activeId = activeOperationIdByAnnouncementId.get(announcementId)
+    const activeId = state.activeOperationIdByAnnouncementId.get(announcementId)
     const active = activeId === undefined ? undefined : merged.operationsById.get(activeId)
     // Preserve local attempts awaiting their first snapshot and confirmed successes.
     if (activeId === undefined || (active?.status === 'rejected' && operation.createdAt > active.createdAt)) {
+      activeOperationIdByAnnouncementId ??= new Map(state.activeOperationIdByAnnouncementId)
       activeOperationIdByAnnouncementId.set(announcementId, operation.operationId)
     }
   }
 
-  return { ...merged, activeOperationIdByAnnouncementId, recovery: { status: 'idle' } }
+  return {
+    ...merged,
+    activeOperationIdByAnnouncementId: activeOperationIdByAnnouncementId ?? state.activeOperationIdByAnnouncementId,
+    recovery: { status: 'idle' },
+  }
 }
 
 function matchesRequest(
@@ -158,11 +180,12 @@ export function publicationReducer(state: PublicationState, action: PublicationA
       const { operationId, operation } = action
       const announcementId = findAnnouncementId(state, operationId)
       if (announcementId === undefined) return state
-      if (operation && (operation.operationId !== operationId || operation.announcementId !== announcementId)) {
+      if (operation && !matchesSnapshotIdentity(operation, operationId, announcementId)) {
         return state
       }
 
       const status = action.type === 'publishSucceeded' ? 'publishing' : 'checking'
+      // A matching response can settle its request even if its snapshot adds no information.
       let next = state
       if (matchesRequest(state, action, status)) {
         next = setRequest(state, operationId, !operation && !state.operationsById.has(operationId)
