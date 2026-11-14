@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAnnouncements } from '../hooks/useAnnouncements'
 import { usePublicationWorkspace } from '../hooks/usePublicationWorkspace'
+import AnnouncementDetails from './AnnouncementDetails'
 import AnnouncementList from './AnnouncementList'
 
 export default function AnnouncementWorkspace() {
@@ -16,11 +17,12 @@ export default function AnnouncementWorkspace() {
     return <p role="alert">Could not load announcements. Refresh the page to try again.</p>
   }
 
-  const selected = state.announcements.find(({ id }) => id === selectedId) ?? state.announcements[0]
-  if (!selected) return <p>No announcements available.</p>
-  const { id, title, body } = selected
-  const { operationId, displayStatus, operation, request, requestError, canPublish, canCheckStatus, canRetry, canRetryPublication } =
-    workspace.getAnnouncementPublication(id)
+  const selected = selectedId === undefined
+    ? state.announcements[0]
+    : state.announcements.find(({ id }) => id === selectedId)
+  const id = selected?.id
+  const publication = id === undefined ? undefined : workspace.getAnnouncementPublication(id)
+  const operationId = publication?.operationId
 
   return (
     <>
@@ -47,39 +49,31 @@ export default function AnnouncementWorkspace() {
           onSelect={setSelectedId}
           getPublication={workspace.getAnnouncementPublication}
         />
-        <section className="workspace-panel announcement-details" aria-labelledby="details-heading">
-          <h2 id="details-heading">{title}</h2>
-          <p>{body}</p>
-          <p role="status">
-            {request?.status === 'publishing' ? 'Submitting publication…' :
-              displayStatus === 'unconfirmed' ? 'Publication outcome unconfirmed' :
-              displayStatus.replace('-', ' ')}
-            {request?.status === 'checking' && ' · Checking status…'}
-            {operation?.status === 'rejected' && ` · ${operation.reason}`}
-            {requestError && ` · ${requestError}`}
-          </p>
-          <div className="publication-actions">
-            {(canPublish || canRetry) && (
-              <button className="primary-action" type="button" onClick={() => void workspace.publishAnnouncement(id).catch(() => {})}>
-                {canRetry ? 'Start new publication attempt' : 'Publish'}
-              </button>
-            )}
-            {canRetryPublication && operationId !== undefined && (
-              <button type="button" onClick={() => void workspace.retryPublication(id, operationId).catch(() => {})}>
-                Retry publication request
-              </button>
-            )}
-            {operation || request ? (
-              <button
-                type="button"
-                disabled={!canCheckStatus}
-                onClick={() => void workspace.checkStatus(id).catch(() => {})}
-              >
-                Check status
-              </button>
-            ) : null}
-          </div>
-        </section>
+        <AnnouncementDetails announcement={selected} publication={publication}>
+          {id !== undefined && publication && (
+            <div className="publication-actions">
+              {(publication.canPublish || publication.canRetry) && (
+                <button className="primary-action" type="button" onClick={() => void workspace.publishAnnouncement(id).catch(() => {})}>
+                  {publication.canRetry ? 'Start new publication attempt' : 'Publish'}
+                </button>
+              )}
+              {publication.canRetryPublication && operationId !== undefined && (
+                <button type="button" onClick={() => void workspace.retryPublication(id, operationId).catch(() => {})}>
+                  Retry publication request
+                </button>
+              )}
+              {publication.operation || publication.request ? (
+                <button
+                  type="button"
+                  disabled={!publication.canCheckStatus}
+                  onClick={() => void workspace.checkStatus(id).catch(() => {})}
+                >
+                  Check status
+                </button>
+              ) : null}
+            </div>
+          )}
+        </AnnouncementDetails>
       </div>
     </>
   )

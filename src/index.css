@@ -161,11 +161,29 @@ p { color: var(--muted); }
 }
 
 .announcement-details p { max-inline-size: 65ch; }
-.announcement-details p[role="status"] {
+.announcement-body { white-space: pre-wrap; }
+
+.publication-details {
   padding-block-start: 1rem;
   margin-block-start: 1.25rem;
   border-block-start: 1px solid var(--border);
 }
+
+.publication-details h3 {
+  margin: 0 0 0.375rem;
+  font-size: 1rem;
+}
+
+.publication-metadata {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 0.375rem 0.75rem;
+  margin: 1rem 0 0;
+  font-size: 0.875rem;
+}
+
+.publication-metadata dt { font-weight: 600; }
+.publication-metadata dd { margin: 0; color: var(--muted); }
 
 .publication-actions {
   display: flex;

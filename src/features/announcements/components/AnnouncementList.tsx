@@ -14,7 +14,7 @@ const statusLabels = {
 
 type AnnouncementListProps = {
   announcements: readonly IAnnouncement[]
-  selectedId: IAnnouncement['id']
+  selectedId: IAnnouncement['id'] | undefined
   onSelect: (id: IAnnouncement['id']) => void
   getPublication: (id: IAnnouncement['id']) => {
     displayStatus: PublicationDisplayStatus
@@ -33,6 +33,7 @@ export default function AnnouncementList({
   return (
     <section className="workspace-panel" aria-labelledby={groupId}>
       <h2 id={groupId}>Announcements</h2>
+      {announcements.length === 0 && <p>No announcements available.</p>}
       <ul className="announcement-options">
         {announcements.map(({ id, title }) => {
           const { displayStatus, request } = getPublication(id)
