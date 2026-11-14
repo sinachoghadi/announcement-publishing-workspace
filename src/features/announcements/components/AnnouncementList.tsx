@@ -3,9 +3,11 @@ import type { IAnnouncement } from '../../../mocks'
 import type { PublicationDisplayStatus } from '../state/publicationSelectors'
 import type { PublicationRequestState } from '../state/publicationTypes'
 import PublicationStatus from './PublicationStatus'
+import type { AnnouncementsState } from '../state/announcementsState'
 
 type AnnouncementListProps = {
   announcements: readonly IAnnouncement[]
+  status?: AnnouncementsState['status']
   selectedId: IAnnouncement['id'] | undefined
   onSelect: (id: IAnnouncement['id']) => void
   getPublication: (id: IAnnouncement['id']) => {
@@ -16,6 +18,7 @@ type AnnouncementListProps = {
 
 export default function AnnouncementList({
   announcements,
+  status = 'success',
   selectedId,
   onSelect,
   getPublication,
@@ -23,10 +26,16 @@ export default function AnnouncementList({
   const groupId = useId()
 
   return (
-    <section className="workspace-panel" aria-labelledby={groupId}>
+    <section className="workspace-panel announcement-list" aria-labelledby={groupId}>
       <h2 id={groupId}>Announcements</h2>
-      {announcements.length === 0 && <p>No announcements available.</p>}
-      <ul className="announcement-options">
+      <p role="status" aria-atomic="true">
+        {status === 'loading' && 'Loading announcements…'}
+        {status === 'success' && announcements.length === 0 && 'No announcements are available.'}
+      </p>
+      {status === 'error' && (
+        <p role="alert">Could not load announcements. Refresh the page to try again.</p>
+      )}
+      <ul className="announcement-options" aria-busy={status === 'loading'}>
         {announcements.map(({ id, title }) => {
           const { displayStatus, request } = getPublication(id)
           const titleId = `${groupId}-${id}-title`

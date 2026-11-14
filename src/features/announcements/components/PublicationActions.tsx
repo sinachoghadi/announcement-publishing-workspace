@@ -40,9 +40,12 @@ export default function PublicationActions({ announcementId, publication, worksp
           key={action}
           className={primary ? 'primary-action' : undefined}
           type="button"
-          disabled={disabled}
+          disabled={disabled && !busy}
+          aria-disabled={disabled}
           aria-busy={busy}
-          onClick={() => void execute(action)}
+          onClick={() => {
+            if (!disabled) void execute(action)
+          }}
         >
           {label}
         </button>

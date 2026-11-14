@@ -49,6 +49,12 @@ p { color: var(--muted); }
 }
 
 .workspace-toolbar button { margin-inline-start: auto; }
+.workspace-toolbar > p {
+  min-inline-size: 0;
+  flex: 1 1 18rem;
+  overflow-wrap: anywhere;
+}
+.workspace-toolbar > p:empty { position: absolute; }
 
 .workspace-grid {
   display: grid;
@@ -68,6 +74,9 @@ p { color: var(--muted); }
   font-size: 1rem;
   margin-block-end: 1rem;
 }
+
+.announcement-list { min-block-size: 17rem; }
+.announcement-list p:empty { position: absolute; }
 
 .announcement-options {
   display: grid;
@@ -165,7 +174,8 @@ p { color: var(--muted); }
   font-size: 1rem;
 }
 
-.publication-feedback {
+.publication-feedback,
+.publication-feedback-summary {
   display: grid;
   gap: 0.5rem;
   overflow-wrap: anywhere;
@@ -207,15 +217,15 @@ button {
   cursor: pointer;
 }
 
-button:hover:enabled { background: var(--accent-subtle); }
-button:disabled { color: var(--muted); cursor: default; }
+button:hover:enabled:not([aria-disabled="true"]) { background: var(--accent-subtle); }
+button:disabled, button[aria-disabled="true"] { color: var(--muted); cursor: default; }
 .primary-action, .primary-action:hover:enabled {
   color: white;
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.primary-action:disabled {
+.primary-action:disabled, .primary-action[aria-disabled="true"] {
   color: var(--muted);
   background: #edf0f4;
   border-color: var(--border);
@@ -224,6 +234,11 @@ button:disabled { color: var(--muted); cursor: default; }
 button:focus-visible, .announcement-option:has(:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .announcement-option:has(:checked) { border-color: Highlight; }
+  .announcement-status { border: 1px solid currentColor; }
 }
 
 @media (min-width: 44rem) {

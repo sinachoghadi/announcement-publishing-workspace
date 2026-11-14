@@ -10,24 +10,19 @@ export default function AnnouncementWorkspace() {
   const workspace = usePublicationWorkspace()
   const [selectedId, setSelectedId] = useState<string>()
 
-  if (state.status === 'loading') {
-    return <p role="status">Loading announcements…</p>
-  }
-
-  if (state.status === 'error') {
-    return <p role="alert">Could not load announcements. Refresh the page to try again.</p>
-  }
-
+  const announcements = state.status === 'success' ? state.announcements : []
   const selected = selectedId === undefined
-    ? state.announcements[0]
-    : state.announcements.find(({ id }) => id === selectedId)
+    ? announcements[0]
+    : announcements.find(({ id }) => id === selectedId)
   const id = selected?.id
   const publication = id === undefined ? undefined : workspace.getAnnouncementPublication(id)
 
   return (
     <>
       <div className="workspace-toolbar">
-        {workspace.recovery.status === 'loading' && <p role="status">Checking previous publication attempts…</p>}
+        <p role="status" aria-atomic="true">
+          {workspace.recovery.status === 'loading' && 'Checking previous publication attempts…'}
+        </p>
         {workspace.recovery.status === 'error' && (
           <p role="alert">
             Could not load previous publication attempts. {workspace.recovery.message}
@@ -36,20 +31,33 @@ export default function AnnouncementWorkspace() {
         )}
         <button
           type="button"
-          disabled={workspace.recovery.status === 'loading'}
-          onClick={() => void workspace.refreshPublicationStatuses().catch(() => {})}
+          aria-disabled={workspace.recovery.status === 'loading'}
+          aria-busy={workspace.recovery.status === 'loading'}
+          onClick={() => {
+            if (workspace.recovery.status !== 'loading') {
+              void workspace.refreshPublicationStatuses().catch(() => {})
+            }
+          }}
         >
-          {workspace.recovery.status === 'error' ? 'Retry loading publication statuses' : 'Refresh publication statuses'}
+          {workspace.recovery.status === 'loading' ? 'Loading publication statuses…' :
+            workspace.recovery.status === 'error' ? 'Retry loading publication statuses' : 'Refresh publication statuses'}
         </button>
       </div>
       <div className="workspace-grid">
         <AnnouncementList
-          announcements={state.announcements}
+          announcements={announcements}
+          status={state.status}
           selectedId={id}
           onSelect={setSelectedId}
           getPublication={workspace.getAnnouncementPublication}
         />
-        <AnnouncementDetails announcement={selected} publication={publication}>
+        <AnnouncementDetails
+          announcement={selected}
+          publication={publication}
+          placeholder={state.status === 'loading' ? 'Announcement details will appear when loading finishes.' :
+            state.status === 'error' ? 'Announcement details are unavailable until the list can be loaded.' :
+            announcements.length === 0 ? 'Details will appear here when announcements are available.' : undefined}
+        >
           {id !== undefined && publication && (
             <PublicationActions announcementId={id} publication={publication} workspace={workspace} />
           )}

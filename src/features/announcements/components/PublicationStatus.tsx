@@ -54,15 +54,17 @@ export default function PublicationStatus({
   if (compact) return badge
 
   return (
-    <div className="publication-feedback" role="status" aria-live="polite" aria-atomic="true">
-      {badge}
-      <p>{submitting ? 'Sending this publication request to the service.' : status.description}</p>
-      {checking && <p>Checking status…</p>}
-      {operation?.status === 'published' && (
-        <p>Published <time dateTime={operation.publishedAt}>{publicationDate.format(new Date(operation.publishedAt))}</time></p>
-      )}
-      {operation?.status === 'rejected' && <p>{operation.reason}</p>}
-      {errorFeedback && <p className="publication-error-feedback">{errorFeedback}</p>}
+    <div className="publication-feedback">
+      <div className="publication-feedback-summary" role="status" aria-live="polite" aria-atomic="true">
+        {badge}
+        <p>{submitting ? 'Sending this publication request to the service.' : status.description}</p>
+        {operation?.status === 'published' && (
+          <p>Published <time dateTime={operation.publishedAt}>{publicationDate.format(new Date(operation.publishedAt))}</time></p>
+        )}
+        {operation?.status === 'rejected' && <p>{operation.reason}</p>}
+        {errorFeedback && <p className="publication-error-feedback">{errorFeedback}</p>}
+      </div>
+      {checking && <p aria-live="off">Checking status…</p>}
     </div>
   )
 }
