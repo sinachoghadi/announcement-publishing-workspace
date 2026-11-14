@@ -14,6 +14,7 @@ import {
   selectPublicationRequest,
   selectPublicationRequestError,
   selectPublicationRequestFailure,
+  selectPublicationActions,
 } from '../state/publicationSelectors'
 import { initialPublicationState, type AnnouncementId, type OperationId } from '../state/publicationTypes'
 
@@ -111,6 +112,7 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
         canCheckStatus: selectCanCheckStatus(state, announcementId),
         canRetry: selectCanRetry(state, announcementId),
         canRetryPublication: selectCanRetryPublication(state, announcementId),
+        actions: selectPublicationActions(state, announcementId),
       }
     },
     getOperation: (operationId: OperationId) => selectOperation(state, operationId),
