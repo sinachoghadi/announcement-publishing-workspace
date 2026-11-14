@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { createPublicationCoordinator } from '../application/publicationCoordinator'
 import { createPublicationPolling } from '../application/publicationPolling'
-import { getStatus, publish } from '../services/announcementService'
+import { getStatus, listOperations, publish } from '../services/announcementService'
 import { publicationReducer, type PublicationAction } from '../state/publicationReducer'
 import {
   selectActiveOperationId,
@@ -36,7 +36,7 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
   const polling = useRef<ReturnType<typeof createPublicationPolling> | null>(null)
 
   useEffect(() => {
-    coordinator.current ??= createPublicationCoordinator({ publish, getStatus }, application)
+    coordinator.current ??= createPublicationCoordinator({ publish, getStatus, listOperations }, application)
     const interval = Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000
     const maxInterval = Number.isFinite(maxPollIntervalMs) ? Math.max(interval, maxPollIntervalMs) : interval
     const current = createPublicationPolling(
@@ -58,7 +58,7 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
   }, [state.activeOperationIdByAnnouncementId, state.operationsById, state.requestsByOperationId])
 
   const getCoordinator = useCallback(() => {
-    coordinator.current ??= createPublicationCoordinator({ publish, getStatus }, application)
+    coordinator.current ??= createPublicationCoordinator({ publish, getStatus, listOperations }, application)
     return coordinator.current
   }, [application])
   const publishAnnouncement = useCallback((announcementId: AnnouncementId) => {
@@ -67,6 +67,10 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
 
   const retryPublication = useCallback((announcementId: AnnouncementId, operationId: OperationId) => {
     return getCoordinator().retryPublication(announcementId, operationId)
+  }, [getCoordinator])
+
+  const refreshPublicationStatuses = useCallback(() => {
+    return getCoordinator().refreshPublicationStatuses()
   }, [getCoordinator])
 
   const checkStatus = useCallback(async (announcementId: AnnouncementId) => {
@@ -95,8 +99,9 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
     publishAnnouncement,
     retryPublication,
     checkStatus,
+    refreshPublicationStatuses,
     recovery: state.recovery,
     // The workspace passes this interface to application logic.
     application,
-  }), [state, application, publishAnnouncement, retryPublication, checkStatus])
+  }), [state, application, publishAnnouncement, retryPublication, checkStatus, refreshPublicationStatuses])
 }

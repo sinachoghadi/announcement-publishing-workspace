@@ -18,7 +18,7 @@ export type PublicationRequestState =
 export type PublicationRecoveryState =
   | { status: 'idle' }
   | { status: 'loading'; requestId: string }
-  | { status: 'error'; message: string }
+  | { status: 'error'; message: string; code?: AnnouncementErrorCode }
 
 export type PublicationState = {
   // Set when an attempt starts, even before its first service snapshot arrives.

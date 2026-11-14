@@ -11,7 +11,7 @@ import {
 } from '../state/publicationSelectors'
 import type { AnnouncementId, OperationId, PublicationState } from '../state/publicationTypes'
 
-type PublicationService = Pick<ReturnType<typeof createAnnouncementService>, 'publish' | 'getStatus'>
+type PublicationService = Pick<ReturnType<typeof createAnnouncementService>, 'publish' | 'getStatus' | 'listOperations'>
 type PublicationStore = {
   getState(): PublicationState
   // Apply the action synchronously and return the resulting state.
@@ -86,6 +86,24 @@ export function createPublicationCoordinator(service: PublicationService, { getS
 
   return {
     publish,
+    async refreshPublicationStatuses() {
+      if (getState().recovery.status === 'loading') return
+
+      const requestId = `publication-${++nextRequestId}`
+      dispatch({ type: 'recoveryStarted', requestId })
+
+      let operations: PublicationOperation[]
+      try {
+        operations = await service.listOperations()
+      } catch (error) {
+        const failure = describeFailure(error)
+        dispatch({ type: 'recoveryFailed', requestId, message: failure.message, code: failure.code })
+        throw error
+      }
+
+      dispatch({ type: 'recoverySucceeded', requestId, operations })
+      return operations
+    },
     retryPublication(announcementId: AnnouncementId, operationId: OperationId) {
       return publish(announcementId, operationId)
     },

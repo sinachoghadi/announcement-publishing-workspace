@@ -27,7 +27,7 @@ export type PublicationAction =
   | { type: 'snapshotReceived'; operation: PublicationOperation }
   | { type: 'recoveryStarted'; requestId: string }
   | { type: 'recoverySucceeded'; requestId: string; operations: readonly PublicationOperation[] }
-  | { type: 'recoveryFailed'; requestId: string; message: string }
+  | { type: 'recoveryFailed'; requestId: string; message: string; code?: AnnouncementErrorCode }
 
 function findAnnouncementId(state: PublicationState, operationId: OperationId) {
   const operation = state.operationsById.get(operationId)
@@ -77,12 +77,27 @@ function mergeSnapshots(
     const { operationId } = snapshot
     const current = (operations ?? state.operationsById).get(operationId)
     const owner = current?.announcementId ?? findAnnouncementId(state, operationId)
-    if (!canAcceptSnapshot(snapshot, current, owner)) continue
+    const request = (requests ?? state.requestsByOperationId).get(operationId)
+    if (!canAcceptSnapshot(snapshot, current, owner)) {
+      // A current-version status read can resolve a communication error without replacing the snapshot.
+      if (
+        current && snapshot.version === current.version &&
+        matchesSnapshotIdentity(snapshot, current.operationId, owner) &&
+        (request?.status === 'error' || request?.status === 'unconfirmed') &&
+        request.code === 'STATUS_UNAVAILABLE'
+      ) {
+        requests ??= new Map(state.requestsByOperationId)
+        requests.delete(operationId)
+      }
+      continue
+    }
 
     operations ??= new Map(state.operationsById)
     operations.set(operationId, snapshot)
-    const request = state.requestsByOperationId.get(operationId)
-    if (request && (snapshot.status !== 'processing' || request.status === 'unconfirmed')) {
+    if (request && (
+      snapshot.status !== 'processing' || request.status === 'unconfirmed' ||
+      (request.status === 'error' && request.code === 'STATUS_UNAVAILABLE')
+    )) {
       requests ??= new Map(state.requestsByOperationId)
       requests.delete(operationId)
     } else if (request?.status === 'checking' && request.previousFailure?.status === 'unconfirmed') {
@@ -91,10 +106,10 @@ function mergeSnapshots(
     }
   }
 
-  if (!operations) return state
+  if (!operations && !requests) return state
   return {
     ...state,
-    operationsById: operations,
+    operationsById: operations ?? state.operationsById,
     requestsByOperationId: requests ?? state.requestsByOperationId,
   }
 }
@@ -204,12 +219,14 @@ export function publicationReducer(state: PublicationState, action: PublicationA
       // A matching response can settle its request even if its snapshot adds no information.
       let next = state
       if (matchesRequest(state, action, status)) {
+        const previousFailure = selectPublicationRequestFailure(state, operationId)
         const missingSnapshot = !operation && (
           !state.operationsById.has(operationId) ||
-          selectPublicationRequestFailure(state, operationId)?.status === 'unconfirmed'
+          previousFailure?.status === 'unconfirmed' ||
+          previousFailure?.code === 'STATUS_UNAVAILABLE'
         )
         next = setRequest(state, operationId, missingSnapshot
-          ? selectPublicationRequestFailure(state, operationId) ??
+          ? previousFailure ??
             { status: 'unconfirmed', message: 'The service has no record of this publication attempt.' }
           : { status: 'idle' })
       }
@@ -238,9 +255,12 @@ export function publicationReducer(state: PublicationState, action: PublicationA
 
       const previousFailure = selectPublicationRequestFailure(state, operationId)
       const permanentFailure = code === 'OPERATION_ID_CONFLICT' || code === 'UNKNOWN_ANNOUNCEMENT'
+      const failureStatus = code === 'STATUS_UNAVAILABLE' && operation?.status === 'processing'
+        ? 'error'
+        : !permanentFailure && previousFailure?.status === 'unconfirmed' ? 'unconfirmed' : failure.status
       return setRequest(state, operationId, operation && operation.status !== 'processing'
         ? { status: 'idle' }
-        : { ...failure, status: !permanentFailure && previousFailure?.status === 'unconfirmed' ? 'unconfirmed' : failure.status })
+        : { ...failure, status: failureStatus })
     }
     case 'snapshotReceived':
       return mergeSnapshots(state, [action.operation])
@@ -251,6 +271,6 @@ export function publicationReducer(state: PublicationState, action: PublicationA
       if (state.recovery.status !== 'loading' || state.recovery.requestId !== action.requestId) return state
       return action.type === 'recoverySucceeded'
         ? restoreOperations(state, action.operations)
-        : { ...state, recovery: { status: 'error', message: action.message } }
+        : { ...state, recovery: { status: 'error', message: action.message, code: action.code } }
   }
 }

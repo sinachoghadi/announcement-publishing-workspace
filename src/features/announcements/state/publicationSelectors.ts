@@ -52,7 +52,8 @@ export function selectPublicationDisplayStatus(
   const status = selectOperation(state, operationId)?.status
   if (status === 'published' || status === 'rejected') return status
 
-  if (selectPublicationRequestFailure(state, operationId)) return 'unconfirmed'
+  const failure = selectPublicationRequestFailure(state, operationId)
+  if (failure && failure.code !== 'STATUS_UNAVAILABLE') return 'unconfirmed'
 
   return status ?? 'unconfirmed'
 }
