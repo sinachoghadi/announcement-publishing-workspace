@@ -1,4 +1,9 @@
-import { selectActiveOperationId, selectOperation, selectPublicationRequestFailure } from '../state/publicationSelectors'
+import {
+  isPublicationIdentityError,
+  selectActiveOperationId,
+  selectOperation,
+  selectPublicationRequestFailure,
+} from '../state/publicationSelectors'
 import type { AnnouncementId, OperationId, PublicationState } from '../state/publicationTypes'
 import type { createPublicationCoordinator } from './publicationCoordinator'
 
@@ -23,10 +28,13 @@ export function createPublicationPolling(
   function shouldPoll(state: PublicationState, announcementId: AnnouncementId, operationId: OperationId) {
     if (selectActiveOperationId(state, announcementId) !== operationId) return false
 
+    const failure = selectPublicationRequestFailure(state, operationId)
+    if (isPublicationIdentityError(failure?.code)) return false
+
     const operation = selectOperation(state, operationId)
     if (operation) return operation.status === 'processing'
 
-    return selectPublicationRequestFailure(state, operationId)?.status === 'unconfirmed'
+    return failure?.status === 'unconfirmed'
   }
 
   function clearTimer(poll: Poll) {

@@ -1,4 +1,4 @@
-import type { AnnouncementErrorCode, IAnnouncement, PublicationOperation } from '../../../mocks'
+import type { AnnouncementErrorCode, AnnouncementMockError, IAnnouncement, PublicationOperation } from '../../../mocks'
 
 export type AnnouncementId = IAnnouncement['id']
 export type OperationId = PublicationOperation['operationId']
@@ -7,6 +7,7 @@ export type PublicationRequestFailure = {
   status: 'error' | 'unconfirmed'
   message: string
   code?: AnnouncementErrorCode
+  serviceRequest?: Pick<AnnouncementMockError, 'requestId' | 'operationId' | 'announcementId'>
 }
 
 export type PublicationRequestState =

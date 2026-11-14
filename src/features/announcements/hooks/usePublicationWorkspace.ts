@@ -13,6 +13,7 @@ import {
   selectPublicationDisplayStatus,
   selectPublicationRequest,
   selectPublicationRequestError,
+  selectPublicationRequestFailure,
 } from '../state/publicationSelectors'
 import { initialPublicationState, type AnnouncementId, type OperationId } from '../state/publicationTypes'
 
@@ -89,6 +90,7 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
         displayStatus: selectPublicationDisplayStatus(state, announcementId),
         request: operationId === undefined ? undefined : selectPublicationRequest(state, operationId),
         requestError: operationId === undefined ? undefined : selectPublicationRequestError(state, operationId),
+        requestFailure: operationId === undefined ? undefined : selectPublicationRequestFailure(state, operationId),
         canPublish: selectCanPublish(state, announcementId),
         canCheckStatus: selectCanCheckStatus(state, announcementId),
         canRetry: selectCanRetry(state, announcementId),

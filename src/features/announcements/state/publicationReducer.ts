@@ -1,8 +1,9 @@
 import type { AnnouncementErrorCode, PublicationOperation } from '../../../mocks'
-import { selectHasPublished, selectPublicationRequestFailure } from './publicationSelectors'
+import { isPublicationIdentityError, selectHasPublished, selectPublicationRequestFailure } from './publicationSelectors'
 import type {
   AnnouncementId,
   OperationId,
+  PublicationRequestFailure,
   PublicationRequestState,
   PublicationState,
 } from './publicationTypes'
@@ -22,6 +23,7 @@ export type PublicationAction =
       type: 'publishFailed' | 'statusCheckFailed'
       message: string
       code?: AnnouncementErrorCode
+      serviceRequest?: PublicationRequestFailure['serviceRequest']
       outcome: 'error' | 'unconfirmed'
     } & OperationRequest)
   | { type: 'snapshotReceived'; operation: PublicationOperation }
@@ -235,11 +237,22 @@ export function publicationReducer(state: PublicationState, action: PublicationA
     case 'publishFailed':
     case 'statusCheckFailed': {
       const status = action.type === 'publishFailed' ? 'publishing' : 'checking'
-      const { operationId, announcementId, code, message } = action
+      const { operationId, announcementId, code, message, serviceRequest } = action
       const operation = state.operationsById.get(operationId)
-      const failure = { status: action.outcome, message, code }
+      const permanentFailure = isPublicationIdentityError(code)
+      const failure: PublicationRequestFailure = {
+        status: permanentFailure ? 'error' : action.outcome,
+        message,
+        code,
+        serviceRequest,
+      }
       if (!matchesRequest(state, action, status)) {
         // A manual check can take over the request slot while publish is in flight.
+        if (permanentFailure && action.type === 'publishFailed' && announcementId !== undefined &&
+          state.activeOperationIdByAnnouncementId.get(announcementId) === operationId &&
+          state.requestsByOperationId.get(operationId)?.status !== 'publishing') {
+          return setRequest(state, operationId, failure)
+        }
         if (action.type !== 'publishFailed' || code !== 'RESPONSE_LOST' || operation ||
           announcementId === undefined || state.activeOperationIdByAnnouncementId.get(announcementId) !== operationId) {
           return state
@@ -253,11 +266,12 @@ export function publicationReducer(state: PublicationState, action: PublicationA
           : failure)
       }
 
+      if (permanentFailure) return setRequest(state, operationId, failure)
+
       const previousFailure = selectPublicationRequestFailure(state, operationId)
-      const permanentFailure = code === 'OPERATION_ID_CONFLICT' || code === 'UNKNOWN_ANNOUNCEMENT'
       const failureStatus = code === 'STATUS_UNAVAILABLE' && operation?.status === 'processing'
         ? 'error'
-        : !permanentFailure && previousFailure?.status === 'unconfirmed' ? 'unconfirmed' : failure.status
+        : previousFailure?.status === 'unconfirmed' ? 'unconfirmed' : failure.status
       return setRequest(state, operationId, operation && operation.status !== 'processing'
         ? { status: 'idle' }
         : { ...failure, status: failureStatus })

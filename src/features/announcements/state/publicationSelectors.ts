@@ -1,4 +1,4 @@
-import type { PublicationOperation } from '../../../mocks'
+import type { AnnouncementErrorCode, PublicationOperation } from '../../../mocks'
 import type {
   AnnouncementId,
   OperationId,
@@ -6,7 +6,11 @@ import type {
   PublicationState,
 } from './publicationTypes'
 
-export type PublicationDisplayStatus = PublicationOperation['status'] | 'not-published' | 'unconfirmed'
+export type PublicationDisplayStatus = PublicationOperation['status'] | 'not-published' | 'unconfirmed' | 'request-error'
+
+export function isPublicationIdentityError(code: AnnouncementErrorCode | undefined) {
+  return code === 'OPERATION_ID_CONFLICT' || code === 'UNKNOWN_ANNOUNCEMENT'
+}
 
 export function selectActiveOperationId(state: PublicationState, announcementId: AnnouncementId) {
   return state.activeOperationIdByAnnouncementId.get(announcementId)
@@ -53,6 +57,7 @@ export function selectPublicationDisplayStatus(
   if (status === 'published' || status === 'rejected') return status
 
   const failure = selectPublicationRequestFailure(state, operationId)
+  if (isPublicationIdentityError(failure?.code)) return status ?? 'request-error'
   if (failure && failure.code !== 'STATUS_UNAVAILABLE') return 'unconfirmed'
 
   return status ?? 'unconfirmed'
@@ -75,6 +80,7 @@ export function selectCanCheckStatus(state: PublicationState, announcementId: An
 
   const status = selectOperation(state, operationId)?.status
   if (status === 'published' || status === 'rejected') return false
+  if (isPublicationIdentityError(selectPublicationRequestFailure(state, operationId)?.code)) return false
 
   // An operation can finish while its original publish response is still in flight.
   return selectPublicationRequest(state, operationId)?.status !== 'checking'
@@ -91,7 +97,7 @@ export function selectCanRetryPublication(state: PublicationState, announcementI
   const request = selectPublicationRequest(state, operationId)
   if (request?.status === 'publishing' || request?.status === 'checking') return false
   const code = selectPublicationRequestFailure(state, operationId)?.code
-  if (code === 'OPERATION_ID_CONFLICT' || code === 'UNKNOWN_ANNOUNCEMENT') return false
+  if (isPublicationIdentityError(code)) return false
 
   const operation = selectOperation(state, operationId)
   return operation ? operation.status === 'processing' : request?.status === 'unconfirmed'

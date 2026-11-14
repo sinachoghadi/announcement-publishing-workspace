@@ -35,7 +35,13 @@ function describeFailure(error: unknown) {
     const outcome = error.code === 'RESPONSE_LOST' || error.code === 'STATUS_UNAVAILABLE'
       ? 'unconfirmed'
       : 'error'
-    return { outcome, message: error.message, code: error.code } as const
+    const { requestId, operationId, announcementId } = error
+    return {
+      outcome,
+      message: error.message,
+      code: error.code,
+      serviceRequest: { requestId, operationId, announcementId },
+    } as const
   }
 
   return { outcome: 'error', message: 'An unexpected error occurred while contacting the publication service.' } as const
