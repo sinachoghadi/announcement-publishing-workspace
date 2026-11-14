@@ -126,15 +126,6 @@ p { color: var(--muted); }
   background: var(--accent-subtle);
 }
 
-.announcement-status[data-status="processing"]::before {
-  content: "";
-  flex: none;
-  inline-size: 0.375rem;
-  block-size: 0.375rem;
-  border-radius: 50%;
-  background: currentColor;
-}
-
 .announcement-status[data-status="published"] {
   color: #166044;
   background: #e5f5ed;
@@ -172,6 +163,17 @@ p { color: var(--muted); }
 .publication-details h3 {
   margin: 0 0 0.375rem;
   font-size: 1rem;
+}
+
+.publication-feedback {
+  display: grid;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.publication-error-feedback {
+  padding-inline-start: 0.75rem;
+  border-inline-start: 2px solid #956817;
 }
 
 .publication-metadata {

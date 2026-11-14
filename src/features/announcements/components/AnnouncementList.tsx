@@ -2,15 +2,7 @@ import { useId } from 'react'
 import type { IAnnouncement } from '../../../mocks'
 import type { PublicationDisplayStatus } from '../state/publicationSelectors'
 import type { PublicationRequestState } from '../state/publicationTypes'
-
-const statusLabels = {
-  'not-published': 'Not Published',
-  processing: 'Processing',
-  published: 'Published',
-  rejected: 'Rejected',
-  unconfirmed: 'Unconfirmed',
-  'request-error': 'Request Error',
-} satisfies Record<PublicationDisplayStatus, string>
+import PublicationStatus from './PublicationStatus'
 
 type AnnouncementListProps = {
   announcements: readonly IAnnouncement[]
@@ -37,7 +29,6 @@ export default function AnnouncementList({
       <ul className="announcement-options">
         {announcements.map(({ id, title }) => {
           const { displayStatus, request } = getPublication(id)
-          const status = request?.status === 'publishing' ? 'submitting' : displayStatus
           const titleId = `${groupId}-${id}-title`
           const statusId = `${groupId}-${id}-status`
 
@@ -54,9 +45,7 @@ export default function AnnouncementList({
                 />
                 <span className="announcement-option-content">
                   <span id={titleId}>{title}</span>
-                  <span id={statusId} className="announcement-status" data-status={status}>
-                    {status === 'submitting' ? 'Submitting…' : statusLabels[status]}
-                  </span>
+                  <PublicationStatus id={statusId} displayStatus={displayStatus} request={request} compact />
                 </span>
               </label>
             </li>
