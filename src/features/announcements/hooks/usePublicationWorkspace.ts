@@ -1,4 +1,6 @@
-import { useMemo, useReducer, useRef } from 'react'
+import { useCallback, useMemo, useReducer, useRef } from 'react'
+import { createPublicationCoordinator } from '../application/publicationCoordinator'
+import { getStatus, publish } from '../services/announcementService'
 import { publicationReducer, type PublicationAction } from '../state/publicationReducer'
 import {
   selectActiveOperationId,
@@ -28,6 +30,12 @@ export function usePublicationWorkspace() {
     },
   }), [dispatch])
 
+  const coordinator = useRef<ReturnType<typeof createPublicationCoordinator> | null>(null)
+  const publishAnnouncement = useCallback((announcementId: AnnouncementId) => {
+    coordinator.current ??= createPublicationCoordinator({ publish, getStatus }, application)
+    return coordinator.current.publish(announcementId)
+  }, [application])
+
   return useMemo(() => ({
     getAnnouncementPublication(announcementId: AnnouncementId) {
       const operationId = selectActiveOperationId(state, announcementId)
@@ -44,8 +52,9 @@ export function usePublicationWorkspace() {
       }
     },
     getOperation: (operationId: OperationId) => selectOperation(state, operationId),
+    publishAnnouncement,
     recovery: state.recovery,
     // The workspace passes this interface to application logic.
     application,
-  }), [state, application])
+  }), [state, application, publishAnnouncement])
 }
