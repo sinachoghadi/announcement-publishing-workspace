@@ -1,5 +1,5 @@
-import type { PublicationOperation } from '../../../mocks'
-import { selectHasPublished } from './publicationSelectors'
+import type { AnnouncementErrorCode, PublicationOperation } from '../../../mocks'
+import { selectHasPublished, selectPublicationRequestFailure } from './publicationSelectors'
 import type {
   AnnouncementId,
   OperationId,
@@ -21,6 +21,7 @@ export type PublicationAction =
   | ({
       type: 'publishFailed' | 'statusCheckFailed'
       message: string
+      code?: AnnouncementErrorCode
       outcome: 'error' | 'unconfirmed'
     } & OperationRequest)
   | { type: 'snapshotReceived'; operation: PublicationOperation }
@@ -80,9 +81,13 @@ function mergeSnapshots(
 
     operations ??= new Map(state.operationsById)
     operations.set(operationId, snapshot)
-    if (snapshot.status !== 'processing' && state.requestsByOperationId.has(operationId)) {
+    const request = state.requestsByOperationId.get(operationId)
+    if (request && (snapshot.status !== 'processing' || request.status === 'unconfirmed')) {
       requests ??= new Map(state.requestsByOperationId)
       requests.delete(operationId)
+    } else if (request?.status === 'checking' && request.previousFailure?.status === 'unconfirmed') {
+      requests ??= new Map(state.requestsByOperationId)
+      requests.set(operationId, { status: 'checking', requestId: request.requestId })
     }
   }
 
@@ -167,7 +172,8 @@ export function publicationReducer(state: PublicationState, action: PublicationA
         return state
       }
       if (action.type === 'statusCheckStarted') {
-        return setRequest(state, operationId, { status: 'checking', requestId })
+        const previousFailure = selectPublicationRequestFailure(state, operationId)
+        return setRequest(state, operationId, { status: 'checking', requestId, previousFailure })
       }
 
       const operation = state.operationsById.get(operationId)
@@ -197,8 +203,13 @@ export function publicationReducer(state: PublicationState, action: PublicationA
       // A matching response can settle its request even if its snapshot adds no information.
       let next = state
       if (matchesRequest(state, action, status)) {
-        next = setRequest(state, operationId, !operation && !state.operationsById.has(operationId)
-          ? { status: 'unconfirmed', message: 'The service has no record of this publication attempt.' }
+        const missingSnapshot = !operation && (
+          !state.operationsById.has(operationId) ||
+          selectPublicationRequestFailure(state, operationId)?.status === 'unconfirmed'
+        )
+        next = setRequest(state, operationId, missingSnapshot
+          ? selectPublicationRequestFailure(state, operationId) ??
+            { status: 'unconfirmed', message: 'The service has no record of this publication attempt.' }
           : { status: 'idle' })
       }
       return operation ? mergeSnapshots(next, [operation]) : next
@@ -206,12 +217,28 @@ export function publicationReducer(state: PublicationState, action: PublicationA
     case 'publishFailed':
     case 'statusCheckFailed': {
       const status = action.type === 'publishFailed' ? 'publishing' : 'checking'
-      if (!matchesRequest(state, action, status)) return state
+      const { operationId, announcementId, code, message } = action
+      const operation = state.operationsById.get(operationId)
+      const failure = { status: action.outcome, message, code }
+      if (!matchesRequest(state, action, status)) {
+        // A manual check can take over the request slot while publish is in flight.
+        if (action.type !== 'publishFailed' || code !== 'RESPONSE_LOST' || operation ||
+          announcementId === undefined || state.activeOperationIdByAnnouncementId.get(announcementId) !== operationId) {
+          return state
+        }
+        const request = state.requestsByOperationId.get(operationId)
+        if (request?.status === 'publishing' || selectPublicationRequestFailure(state, operationId)?.status === 'unconfirmed') {
+          return state
+        }
+        return setRequest(state, operationId, request?.status === 'checking'
+          ? { ...request, previousFailure: failure }
+          : failure)
+      }
 
-      const operation = state.operationsById.get(action.operationId)
-      return setRequest(state, action.operationId, operation && operation.status !== 'processing'
+      const previousFailure = selectPublicationRequestFailure(state, operationId)
+      return setRequest(state, operationId, operation && operation.status !== 'processing'
         ? { status: 'idle' }
-        : { status: action.outcome, message: action.message })
+        : { ...failure, status: previousFailure?.status === 'unconfirmed' ? 'unconfirmed' : failure.status })
     }
     case 'snapshotReceived':
       return mergeSnapshots(state, [action.operation])

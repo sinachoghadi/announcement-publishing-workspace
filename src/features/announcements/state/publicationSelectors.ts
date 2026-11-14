@@ -32,9 +32,14 @@ export function selectPublicationRequest(
   return state.requestsByOperationId.get(operationId)
 }
 
-export function selectPublicationRequestError(state: PublicationState, operationId: OperationId) {
+export function selectPublicationRequestFailure(state: PublicationState, operationId: OperationId) {
   const request = selectPublicationRequest(state, operationId)
-  if (request?.status === 'error' || request?.status === 'unconfirmed') return request.message
+  if (request?.status === 'checking') return request.previousFailure
+  if (request?.status === 'error' || request?.status === 'unconfirmed') return request
+}
+
+export function selectPublicationRequestError(state: PublicationState, operationId: OperationId) {
+  return selectPublicationRequestFailure(state, operationId)?.message
 }
 
 export function selectPublicationDisplayStatus(
@@ -47,8 +52,7 @@ export function selectPublicationDisplayStatus(
   const status = selectOperation(state, operationId)?.status
   if (status === 'published' || status === 'rejected') return status
 
-  const request = selectPublicationRequest(state, operationId)
-  if (request?.status === 'error' || request?.status === 'unconfirmed') return 'unconfirmed'
+  if (selectPublicationRequestFailure(state, operationId)) return 'unconfirmed'
 
   return status ?? 'unconfirmed'
 }

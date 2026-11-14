@@ -1,14 +1,19 @@
-import type { IAnnouncement, PublicationOperation } from '../../../mocks'
+import type { AnnouncementErrorCode, IAnnouncement, PublicationOperation } from '../../../mocks'
 
 export type AnnouncementId = IAnnouncement['id']
 export type OperationId = PublicationOperation['operationId']
 
+export type PublicationRequestFailure = {
+  status: 'error' | 'unconfirmed'
+  message: string
+  code?: AnnouncementErrorCode
+}
+
 export type PublicationRequestState =
   | { status: 'idle' }
   | { status: 'publishing'; requestId: string }
-  | { status: 'checking'; requestId: string }
-  | { status: 'error'; message: string }
-  | { status: 'unconfirmed'; message: string }
+  | { status: 'checking'; requestId: string; previousFailure?: PublicationRequestFailure }
+  | PublicationRequestFailure
 
 export type PublicationRecoveryState =
   | { status: 'idle' }

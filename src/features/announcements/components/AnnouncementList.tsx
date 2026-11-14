@@ -24,7 +24,9 @@ export default function AnnouncementList() {
             <h2>{title}</h2>
             <p>{body}</p>
             <p role="status">
-              {request?.status === 'publishing' ? 'Submitting publication…' : displayStatus.replace('-', ' ')}
+              {request?.status === 'publishing' ? 'Submitting publication…' :
+                displayStatus === 'unconfirmed' ? 'Publication outcome unconfirmed' :
+                displayStatus.replace('-', ' ')}
               {request?.status === 'checking' && ' · Checking status…'}
               {operation?.status === 'rejected' && ` · ${operation.reason}`}
               {requestError && ` · ${requestError}`}

@@ -54,7 +54,7 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
 
   useEffect(() => {
     polling.current?.sync()
-  }, [state.activeOperationIdByAnnouncementId, state.operationsById])
+  }, [state.activeOperationIdByAnnouncementId, state.operationsById, state.requestsByOperationId])
 
   const publishAnnouncement = useCallback((announcementId: AnnouncementId) => {
     coordinator.current ??= createPublicationCoordinator({ publish, getStatus }, application)
