@@ -34,7 +34,7 @@ export function selectPublicationRequest(
 
 export function selectPublicationRequestFailure(state: PublicationState, operationId: OperationId) {
   const request = selectPublicationRequest(state, operationId)
-  if (request?.status === 'checking') return request.previousFailure
+  if (request?.status === 'checking' || request?.status === 'publishing') return request.previousFailure
   if (request?.status === 'error' || request?.status === 'unconfirmed') return request
 }
 
@@ -81,4 +81,17 @@ export function selectCanCheckStatus(state: PublicationState, announcementId: An
 
 export function selectCanRetry(state: PublicationState, announcementId: AnnouncementId) {
   return selectPublicationStatus(state, announcementId) === 'rejected' && !selectHasPublished(state, announcementId)
+}
+
+export function selectCanRetryPublication(state: PublicationState, announcementId: AnnouncementId) {
+  const operationId = selectActiveOperationId(state, announcementId)
+  if (operationId === undefined || selectHasPublished(state, announcementId)) return false
+
+  const request = selectPublicationRequest(state, operationId)
+  if (request?.status === 'publishing' || request?.status === 'checking') return false
+  const code = selectPublicationRequestFailure(state, operationId)?.code
+  if (code === 'OPERATION_ID_CONFLICT' || code === 'UNKNOWN_ANNOUNCEMENT') return false
+
+  const operation = selectOperation(state, operationId)
+  return operation ? operation.status === 'processing' : request?.status === 'unconfirmed'
 }

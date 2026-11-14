@@ -6,6 +6,7 @@ import {
   selectCanCheckStatus,
   selectCanPublish,
   selectCanRetry,
+  selectCanRetryPublication,
   selectPublicationRequest,
 } from '../state/publicationSelectors'
 import type { AnnouncementId, OperationId, PublicationState } from '../state/publicationTypes'
@@ -41,50 +42,58 @@ function describeFailure(error: unknown) {
 }
 
 export function createPublicationCoordinator(service: PublicationService, { getState, dispatch }: PublicationStore) {
-  const publishing = new Set<AnnouncementId>()
+  const publishing = new Map<AnnouncementId, 'initial' | 'retry'>()
   const checking = new Set<OperationId>()
 
-  return {
-    async publish(announcementId: AnnouncementId, existingOperationId?: OperationId) {
-      if (publishing.has(announcementId)) return
-      publishing.add(announcementId)
-      try {
-        const state = getState()
-        let operationId = existingOperationId
-        if (operationId === undefined) {
-          if (!selectCanPublish(state, announcementId) && !selectCanRetry(state, announcementId)) return
-          operationId = crypto.randomUUID()
-          const registered = dispatch({ type: 'operationStarted', announcementId, operationId })
-          if (registered === state || selectActiveOperationId(registered, announcementId) !== operationId) return
-        } else if (selectActiveOperationId(state, announcementId) !== operationId) {
-          return
-        }
-
-        const request = { announcementId, operationId, requestId: `publication-${++nextRequestId}` }
-        const started = dispatch({ type: 'publishStarted', ...request })
-        const pending = selectPublicationRequest(started, operationId)
-        if (pending?.status !== 'publishing' || pending.requestId !== request.requestId) return
-
-        let operation: PublicationOperation
-        try {
-          operation = await service.publish(announcementId, operationId)
-          requireMatchingOperation(operation, announcementId, operationId)
-        } catch (error) {
-          dispatch({ type: 'publishFailed', ...request, ...describeFailure(error) })
-          throw error
-        }
-
-        dispatch({ type: 'publishSucceeded', ...request, operation })
-        return operation
-      } finally {
-        publishing.delete(announcementId)
+  async function publish(announcementId: AnnouncementId, existingOperationId?: OperationId) {
+    if (publishing.has(announcementId)) return
+    publishing.set(announcementId, existingOperationId === undefined ? 'initial' : 'retry')
+    try {
+      const state = getState()
+      let operationId = existingOperationId
+      if (operationId === undefined) {
+        if (!selectCanPublish(state, announcementId) && !selectCanRetry(state, announcementId)) return
+        operationId = crypto.randomUUID()
+        const registered = dispatch({ type: 'operationStarted', announcementId, operationId })
+        if (registered === state || selectActiveOperationId(registered, announcementId) !== operationId) return
+      } else if (
+        selectActiveOperationId(state, announcementId) !== operationId ||
+        !selectCanRetryPublication(state, announcementId)
+      ) {
+        return
       }
-    },
 
+      const request = { announcementId, operationId, requestId: `publication-${++nextRequestId}` }
+      const started = dispatch({ type: 'publishStarted', ...request })
+      const pending = selectPublicationRequest(started, operationId)
+      if (pending?.status !== 'publishing' || pending.requestId !== request.requestId) return
+
+      let operation: PublicationOperation
+      try {
+        operation = await service.publish(announcementId, operationId)
+        requireMatchingOperation(operation, announcementId, operationId)
+      } catch (error) {
+        dispatch({ type: 'publishFailed', ...request, ...describeFailure(error) })
+        throw error
+      }
+
+      dispatch({ type: 'publishSucceeded', ...request, operation })
+      return operation
+    } finally {
+      publishing.delete(announcementId)
+    }
+  }
+
+  return {
+    publish,
+    retryPublication(announcementId: AnnouncementId, operationId: OperationId) {
+      return publish(announcementId, operationId)
+    },
     async checkStatus(announcementId: AnnouncementId, operationId: OperationId) {
       const state = getState()
       if (
         checking.has(operationId) ||
+        publishing.get(announcementId) === 'retry' ||
         selectActiveOperationId(state, announcementId) !== operationId ||
         !selectCanCheckStatus(state, announcementId)
       ) return

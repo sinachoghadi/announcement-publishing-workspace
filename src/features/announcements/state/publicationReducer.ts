@@ -186,7 +186,8 @@ export function publicationReducer(state: PublicationState, action: PublicationA
         selectHasPublished(state, announcementId)
       ) return state
 
-      return setRequest(state, operationId, { status: 'publishing', requestId })
+      const previousFailure = selectPublicationRequestFailure(state, operationId)
+      return setRequest(state, operationId, { status: 'publishing', requestId, previousFailure })
     }
     case 'publishSucceeded':
     case 'statusCheckSucceeded': {
@@ -236,9 +237,10 @@ export function publicationReducer(state: PublicationState, action: PublicationA
       }
 
       const previousFailure = selectPublicationRequestFailure(state, operationId)
+      const permanentFailure = code === 'OPERATION_ID_CONFLICT' || code === 'UNKNOWN_ANNOUNCEMENT'
       return setRequest(state, operationId, operation && operation.status !== 'processing'
         ? { status: 'idle' }
-        : { ...failure, status: previousFailure?.status === 'unconfirmed' ? 'unconfirmed' : failure.status })
+        : { ...failure, status: !permanentFailure && previousFailure?.status === 'unconfirmed' ? 'unconfirmed' : failure.status })
     }
     case 'snapshotReceived':
       return mergeSnapshots(state, [action.operation])

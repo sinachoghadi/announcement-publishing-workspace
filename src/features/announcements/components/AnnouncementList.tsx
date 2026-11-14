@@ -16,7 +16,7 @@ export default function AnnouncementList() {
   return (
     <ul>
       {state.announcements.map(({ id, title, body }) => {
-        const { displayStatus, operation, request, requestError, canPublish, canCheckStatus } =
+        const { operationId, displayStatus, operation, request, requestError, canPublish, canCheckStatus, canRetryPublication } =
           workspace.getAnnouncementPublication(id)
 
         return (
@@ -34,6 +34,11 @@ export default function AnnouncementList() {
             {canPublish && (
               <button type="button" onClick={() => void workspace.publishAnnouncement(id).catch(() => {})}>
                 Publish
+              </button>
+            )}
+            {canRetryPublication && operationId !== undefined && (
+              <button type="button" onClick={() => void workspace.retryPublication(id, operationId).catch(() => {})}>
+                Retry publication request
               </button>
             )}
             {operation || request ? (

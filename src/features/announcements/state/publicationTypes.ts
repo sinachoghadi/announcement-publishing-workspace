@@ -11,7 +11,7 @@ export type PublicationRequestFailure = {
 
 export type PublicationRequestState =
   | { status: 'idle' }
-  | { status: 'publishing'; requestId: string }
+  | { status: 'publishing'; requestId: string; previousFailure?: PublicationRequestFailure }
   | { status: 'checking'; requestId: string; previousFailure?: PublicationRequestFailure }
   | PublicationRequestFailure
 

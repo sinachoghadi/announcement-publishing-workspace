@@ -8,6 +8,7 @@ import {
   selectCanCheckStatus,
   selectCanPublish,
   selectCanRetry,
+  selectCanRetryPublication,
   selectOperation,
   selectPublicationDisplayStatus,
   selectPublicationRequest,
@@ -56,10 +57,17 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
     polling.current?.sync()
   }, [state.activeOperationIdByAnnouncementId, state.operationsById, state.requestsByOperationId])
 
-  const publishAnnouncement = useCallback((announcementId: AnnouncementId) => {
+  const getCoordinator = useCallback(() => {
     coordinator.current ??= createPublicationCoordinator({ publish, getStatus }, application)
-    return coordinator.current.publish(announcementId)
+    return coordinator.current
   }, [application])
+  const publishAnnouncement = useCallback((announcementId: AnnouncementId) => {
+    return getCoordinator().publish(announcementId)
+  }, [getCoordinator])
+
+  const retryPublication = useCallback((announcementId: AnnouncementId, operationId: OperationId) => {
+    return getCoordinator().retryPublication(announcementId, operationId)
+  }, [getCoordinator])
 
   const checkStatus = useCallback(async (announcementId: AnnouncementId) => {
     const operationId = selectActiveOperationId(application.getState(), announcementId)
@@ -80,13 +88,15 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
         canPublish: selectCanPublish(state, announcementId),
         canCheckStatus: selectCanCheckStatus(state, announcementId),
         canRetry: selectCanRetry(state, announcementId),
+        canRetryPublication: selectCanRetryPublication(state, announcementId),
       }
     },
     getOperation: (operationId: OperationId) => selectOperation(state, operationId),
     publishAnnouncement,
+    retryPublication,
     checkStatus,
     recovery: state.recovery,
     // The workspace passes this interface to application logic.
     application,
-  }), [state, application, publishAnnouncement, checkStatus])
+  }), [state, application, publishAnnouncement, retryPublication, checkStatus])
 }
