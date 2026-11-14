@@ -1,7 +1,9 @@
 import { useAnnouncements } from '../hooks/useAnnouncements'
+import { usePublicationWorkspace } from '../hooks/usePublicationWorkspace'
 
 export default function AnnouncementList() {
   const state = useAnnouncements()
+  const workspace = usePublicationWorkspace()
 
   if (state.status === 'loading') {
     return <p role="status">Loading announcements…</p>
@@ -13,12 +15,37 @@ export default function AnnouncementList() {
 
   return (
     <ul>
-      {state.announcements.map(({ id, title, body }) => (
-        <li key={id}>
-          <h2>{title}</h2>
-          <p>{body}</p>
-        </li>
-      ))}
+      {state.announcements.map(({ id, title, body }) => {
+        const { displayStatus, operation, request, requestError, canPublish, canCheckStatus } =
+          workspace.getAnnouncementPublication(id)
+
+        return (
+          <li key={id}>
+            <h2>{title}</h2>
+            <p>{body}</p>
+            <p role="status">
+              {request?.status === 'publishing' ? 'Submitting publication…' : displayStatus.replace('-', ' ')}
+              {request?.status === 'checking' && ' · Checking status…'}
+              {operation?.status === 'rejected' && ` · ${operation.reason}`}
+              {requestError && ` · ${requestError}`}
+            </p>
+            {canPublish && (
+              <button type="button" onClick={() => void workspace.publishAnnouncement(id).catch(() => {})}>
+                Publish
+              </button>
+            )}
+            {operation || request ? (
+              <button
+                type="button"
+                disabled={!canCheckStatus}
+                onClick={() => void workspace.checkStatus(id).catch(() => {})}
+              >
+                Check status
+              </button>
+            ) : null}
+          </li>
+        )
+      })}
     </ul>
   )
 }

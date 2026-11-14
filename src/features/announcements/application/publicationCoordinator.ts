@@ -3,6 +3,7 @@ import type { createAnnouncementService } from '../services/announcementService'
 import type { PublicationAction } from '../state/publicationReducer'
 import {
   selectActiveOperationId,
+  selectCanCheckStatus,
   selectCanPublish,
   selectCanRetry,
   selectPublicationRequest,
@@ -41,6 +42,7 @@ function describeFailure(error: unknown) {
 
 export function createPublicationCoordinator(service: PublicationService, { getState, dispatch }: PublicationStore) {
   const publishing = new Set<AnnouncementId>()
+  const checking = new Set<OperationId>()
 
   return {
     async publish(announcementId: AnnouncementId, existingOperationId?: OperationId) {
@@ -80,20 +82,32 @@ export function createPublicationCoordinator(service: PublicationService, { getS
     },
 
     async checkStatus(announcementId: AnnouncementId, operationId: OperationId) {
-      const request = { announcementId, operationId, requestId: `publication-${++nextRequestId}` }
-      dispatch({ type: 'statusCheckStarted', ...request })
+      const state = getState()
+      if (
+        checking.has(operationId) ||
+        selectActiveOperationId(state, announcementId) !== operationId ||
+        !selectCanCheckStatus(state, announcementId)
+      ) return
 
-      let operation: PublicationOperation | null
+      checking.add(operationId)
       try {
-        operation = await service.getStatus(operationId)
-        if (operation !== null) requireMatchingOperation(operation, announcementId, operationId)
-      } catch (error) {
-        dispatch({ type: 'statusCheckFailed', ...request, ...describeFailure(error) })
-        throw error
-      }
+        const request = { announcementId, operationId, requestId: `publication-${++nextRequestId}` }
+        dispatch({ type: 'statusCheckStarted', ...request })
 
-      dispatch({ type: 'statusCheckSucceeded', ...request, operation })
-      return operation
+        let operation: PublicationOperation | null
+        try {
+          operation = await service.getStatus(operationId)
+          if (operation !== null) requireMatchingOperation(operation, announcementId, operationId)
+        } catch (error) {
+          dispatch({ type: 'statusCheckFailed', ...request, ...describeFailure(error) })
+          throw error
+        }
+
+        dispatch({ type: 'statusCheckSucceeded', ...request, operation })
+        return operation
+      } finally {
+        checking.delete(operationId)
+      }
     },
   }
 }
