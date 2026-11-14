@@ -96,7 +96,8 @@ export function createPublicationCoordinator(service: PublicationService, { getS
       if (getState().recovery.status === 'loading') return
 
       const requestId = `publication-${++nextRequestId}`
-      dispatch({ type: 'recoveryStarted', requestId })
+      const { recovery } = dispatch({ type: 'recoveryStarted', requestId })
+      if (recovery.status !== 'loading' || recovery.requestId !== requestId) return
 
       let operations: PublicationOperation[]
       try {

@@ -19,6 +19,7 @@ export type PublicationRequestState =
 export type PublicationRecoveryState =
   | { status: 'idle' }
   | { status: 'loading'; requestId: string }
+  | { status: 'success' }
   | { status: 'error'; message: string; code?: AnnouncementErrorCode }
 
 export type PublicationState = {
@@ -29,7 +30,6 @@ export type PublicationState = {
   // Track the latest request per operation. Request IDs correlate pending responses independently of snapshot versions.
   readonly requestsByOperationId: ReadonlyMap<OperationId, PublicationRequestState>
   readonly recovery: PublicationRecoveryState
-  readonly hasRestoredPublications: boolean
 }
 
 export const initialPublicationState: PublicationState = {
@@ -37,5 +37,4 @@ export const initialPublicationState: PublicationState = {
   operationsById: new Map(),
   requestsByOperationId: new Map(),
   recovery: { status: 'idle' },
-  hasRestoredPublications: false,
 }

@@ -45,8 +45,8 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
 
   useEffect(() => {
     mounted.current = true
-    if (!application.getState().hasRestoredPublications) {
-      // The coordinator shares the loading guard across Strict Mode effect replays.
+    if (application.getState().recovery.status === 'idle') {
+      // Strict Mode effect replay sees the existing request state.
       void getCoordinator().refreshPublicationStatuses().catch(() => {})
     }
     return () => {
@@ -76,11 +76,12 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
   }, [state.activeOperationIdByAnnouncementId, state.operationsById, state.requestsByOperationId])
 
   const publishAnnouncement = useCallback(async (announcementId: AnnouncementId) => {
-    if (!mounted.current || !application.getState().hasRestoredPublications) return
+    if (!mounted.current) return
     return getCoordinator().publish(announcementId)
-  }, [application, getCoordinator])
+  }, [getCoordinator])
 
-  const retryPublication = useCallback((announcementId: AnnouncementId, operationId: OperationId) => {
+  const retryPublication = useCallback(async (announcementId: AnnouncementId, operationId: OperationId) => {
+    if (!mounted.current) return
     return getCoordinator().retryPublication(announcementId, operationId)
   }, [getCoordinator])
 
@@ -106,9 +107,9 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
         request: operationId === undefined ? undefined : selectPublicationRequest(state, operationId),
         requestError: operationId === undefined ? undefined : selectPublicationRequestError(state, operationId),
         requestFailure: operationId === undefined ? undefined : selectPublicationRequestFailure(state, operationId),
-        canPublish: state.hasRestoredPublications && selectCanPublish(state, announcementId),
+        canPublish: selectCanPublish(state, announcementId),
         canCheckStatus: selectCanCheckStatus(state, announcementId),
-        canRetry: state.hasRestoredPublications && selectCanRetry(state, announcementId),
+        canRetry: selectCanRetry(state, announcementId),
         canRetryPublication: selectCanRetryPublication(state, announcementId),
       }
     },

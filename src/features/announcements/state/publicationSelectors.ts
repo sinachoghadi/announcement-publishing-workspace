@@ -71,7 +71,9 @@ export function selectHasPublished(state: PublicationState, announcementId: Anno
 }
 
 export function selectCanPublish(state: PublicationState, announcementId: AnnouncementId) {
-  return selectActiveOperationId(state, announcementId) === undefined && !selectHasPublished(state, announcementId)
+  return state.recovery.status === 'success' &&
+    selectActiveOperationId(state, announcementId) === undefined &&
+    !selectHasPublished(state, announcementId)
 }
 
 export function selectCanCheckStatus(state: PublicationState, announcementId: AnnouncementId) {
@@ -87,7 +89,9 @@ export function selectCanCheckStatus(state: PublicationState, announcementId: An
 }
 
 export function selectCanRetry(state: PublicationState, announcementId: AnnouncementId) {
-  return selectPublicationStatus(state, announcementId) === 'rejected' && !selectHasPublished(state, announcementId)
+  return state.recovery.status === 'success' &&
+    selectPublicationStatus(state, announcementId) === 'rejected' &&
+    !selectHasPublished(state, announcementId)
 }
 
 export function selectCanRetryPublication(state: PublicationState, announcementId: AnnouncementId) {

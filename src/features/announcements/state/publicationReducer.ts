@@ -158,8 +158,7 @@ function restoreOperations(
   return {
     ...merged,
     activeOperationIdByAnnouncementId: activeOperationIdByAnnouncementId ?? state.activeOperationIdByAnnouncementId,
-    recovery: { status: 'idle' },
-    hasRestoredPublications: true,
+    recovery: { status: 'success' },
   }
 }
 
@@ -286,6 +285,7 @@ export function publicationReducer(state: PublicationState, action: PublicationA
     case 'snapshotReceived':
       return mergeSnapshots(state, [action.operation])
     case 'recoveryStarted':
+      if (state.recovery.status === 'loading') return state
       return { ...state, recovery: { status: 'loading', requestId: action.requestId } }
     case 'recoverySucceeded':
     case 'recoveryFailed':

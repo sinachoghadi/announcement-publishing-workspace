@@ -15,14 +15,20 @@ export default function AnnouncementList() {
 
   return (
     <>
+      {workspace.recovery.status === 'loading' && <p role="status">Checking previous publication attempts…</p>}
+      {workspace.recovery.status === 'error' && (
+        <p role="alert">
+          Could not load previous publication attempts. {workspace.recovery.message}
+          {' '}Try again to resume starting new publications.
+        </p>
+      )}
       <button
         type="button"
         disabled={workspace.recovery.status === 'loading'}
         onClick={() => void workspace.refreshPublicationStatuses().catch(() => {})}
       >
-        {workspace.recovery.status === 'loading' ? 'Refreshing statuses…' : 'Refresh publication statuses'}
+        {workspace.recovery.status === 'error' ? 'Retry loading publication statuses' : 'Refresh publication statuses'}
       </button>
-      {workspace.recovery.status === 'error' && <p role="alert">{workspace.recovery.message}</p>}
       <ul>
         {state.announcements.map(({ id, title, body }) => {
           const { operationId, displayStatus, operation, request, requestError, canPublish, canCheckStatus, canRetry, canRetryPublication } =
