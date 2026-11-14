@@ -7,7 +7,11 @@ import type {
   PublicationState,
 } from './publicationTypes'
 
-type OperationRequest = { operationId: OperationId; requestId: string }
+type OperationRequest = {
+  operationId: OperationId
+  requestId: string
+  announcementId?: AnnouncementId
+}
 
 export type PublicationAction =
   | { type: 'operationStarted'; announcementId: AnnouncementId; operationId: OperationId }
@@ -136,7 +140,8 @@ function matchesRequest(
   status: 'publishing' | 'checking',
 ) {
   const request = state.requestsByOperationId.get(action.operationId)
-  return request?.status === status && request.requestId === action.requestId
+  return request?.status === status && request.requestId === action.requestId &&
+    (action.announcementId === undefined || action.announcementId === findAnnouncementId(state, action.operationId))
 }
 
 export function publicationReducer(state: PublicationState, action: PublicationAction): PublicationState {
@@ -158,7 +163,9 @@ export function publicationReducer(state: PublicationState, action: PublicationA
     case 'statusCheckStarted': {
       const { operationId, requestId } = action
       const announcementId = findAnnouncementId(state, operationId)
-      if (announcementId === undefined) return state
+      if (announcementId === undefined || (action.announcementId !== undefined && action.announcementId !== announcementId)) {
+        return state
+      }
       if (action.type === 'statusCheckStarted') {
         return setRequest(state, operationId, { status: 'checking', requestId })
       }
@@ -179,7 +186,9 @@ export function publicationReducer(state: PublicationState, action: PublicationA
     case 'statusCheckSucceeded': {
       const { operationId, operation } = action
       const announcementId = findAnnouncementId(state, operationId)
-      if (announcementId === undefined) return state
+      if (announcementId === undefined || (action.announcementId !== undefined && action.announcementId !== announcementId)) {
+        return state
+      }
       if (operation && !matchesSnapshotIdentity(operation, operationId, announcementId)) {
         return state
       }
