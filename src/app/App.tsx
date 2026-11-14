@@ -1,4 +1,4 @@
-import AnnouncementList from '../features/announcements/components/AnnouncementList'
+import AnnouncementWorkspace from '../features/announcements/components/AnnouncementWorkspace'
 
 export default function App() {
   return (
@@ -7,7 +7,7 @@ export default function App() {
         <h1>Announcement Workspace</h1>
         <p>Review prepared announcements, publish them, and track their status.</p>
       </header>
-      <AnnouncementList />
+      <AnnouncementWorkspace />
     </main>
   )
 }

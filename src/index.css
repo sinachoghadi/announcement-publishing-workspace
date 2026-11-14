@@ -101,6 +101,56 @@ p { color: var(--muted); }
   font-weight: 600;
 }
 
+.announcement-option-content {
+  display: grid;
+  min-inline-size: 0;
+  gap: 0.25rem;
+}
+
+.announcement-status {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.5rem;
+  background: #edf0f4;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.announcement-status[data-status="processing"],
+.announcement-status[data-status="submitting"] {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.announcement-status[data-status="processing"]::before {
+  content: "";
+  flex: none;
+  inline-size: 0.375rem;
+  block-size: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.announcement-status[data-status="published"] {
+  color: #166044;
+  background: #e5f5ed;
+}
+
+.announcement-status[data-status="unconfirmed"] {
+  color: #784e09;
+  background: #fff1d6;
+}
+
+.announcement-status[data-status="rejected"],
+.announcement-status[data-status="request-error"] {
+  color: #8c3030;
+  background: #fbecec;
+}
+
 .announcement-details {
   min-block-size: 16rem;
 }
