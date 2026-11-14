@@ -20,9 +20,11 @@ import { initialPublicationState, type AnnouncementId, type OperationId } from '
 export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollIntervalMs = 10000 } = {}) {
   const [state, dispatch] = useReducer(publicationReducer, initialPublicationState)
   const latestState = useRef(initialPublicationState)
+  const mounted = useRef(false)
   const application = useMemo(() => ({
     getState: () => latestState.current,
     dispatch(action: PublicationAction) {
+      if (!mounted.current) return latestState.current
       // Confirm application actions immediately, even when React batches rendering.
       const next = publicationReducer(latestState.current, action)
       if (next !== latestState.current) {
@@ -36,13 +38,28 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
   const coordinator = useRef<ReturnType<typeof createPublicationCoordinator> | null>(null)
   const polling = useRef<ReturnType<typeof createPublicationPolling> | null>(null)
 
-  useEffect(() => {
+  const getCoordinator = useCallback(() => {
     coordinator.current ??= createPublicationCoordinator({ publish, getStatus, listOperations }, application)
+    return coordinator.current
+  }, [application])
+
+  useEffect(() => {
+    mounted.current = true
+    if (!application.getState().hasRestoredPublications) {
+      // The coordinator shares the loading guard across Strict Mode effect replays.
+      void getCoordinator().refreshPublicationStatuses().catch(() => {})
+    }
+    return () => {
+      mounted.current = false
+    }
+  }, [application, getCoordinator])
+
+  useEffect(() => {
     const interval = Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 2000
     const maxInterval = Number.isFinite(maxPollIntervalMs) ? Math.max(interval, maxPollIntervalMs) : interval
     const current = createPublicationPolling(
       application.getState,
-      coordinator.current.checkStatus,
+      getCoordinator().checkStatus,
       interval,
       maxInterval,
     )
@@ -52,25 +69,23 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
       current.stop()
       polling.current = null
     }
-  }, [application, pollIntervalMs, maxPollIntervalMs])
+  }, [application, getCoordinator, pollIntervalMs, maxPollIntervalMs])
 
   useEffect(() => {
     polling.current?.sync()
   }, [state.activeOperationIdByAnnouncementId, state.operationsById, state.requestsByOperationId])
 
-  const getCoordinator = useCallback(() => {
-    coordinator.current ??= createPublicationCoordinator({ publish, getStatus, listOperations }, application)
-    return coordinator.current
-  }, [application])
-  const publishAnnouncement = useCallback((announcementId: AnnouncementId) => {
+  const publishAnnouncement = useCallback(async (announcementId: AnnouncementId) => {
+    if (!mounted.current || !application.getState().hasRestoredPublications) return
     return getCoordinator().publish(announcementId)
-  }, [getCoordinator])
+  }, [application, getCoordinator])
 
   const retryPublication = useCallback((announcementId: AnnouncementId, operationId: OperationId) => {
     return getCoordinator().retryPublication(announcementId, operationId)
   }, [getCoordinator])
 
-  const refreshPublicationStatuses = useCallback(() => {
+  const refreshPublicationStatuses = useCallback(async () => {
+    if (!mounted.current) return
     return getCoordinator().refreshPublicationStatuses()
   }, [getCoordinator])
 
@@ -91,9 +106,9 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
         request: operationId === undefined ? undefined : selectPublicationRequest(state, operationId),
         requestError: operationId === undefined ? undefined : selectPublicationRequestError(state, operationId),
         requestFailure: operationId === undefined ? undefined : selectPublicationRequestFailure(state, operationId),
-        canPublish: selectCanPublish(state, announcementId),
+        canPublish: state.hasRestoredPublications && selectCanPublish(state, announcementId),
         canCheckStatus: selectCanCheckStatus(state, announcementId),
-        canRetry: selectCanRetry(state, announcementId),
+        canRetry: state.hasRestoredPublications && selectCanRetry(state, announcementId),
         canRetryPublication: selectCanRetryPublication(state, announcementId),
       }
     },

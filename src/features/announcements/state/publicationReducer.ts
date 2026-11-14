@@ -122,13 +122,15 @@ function restoreOperations(
 ): PublicationState {
   const merged = mergeSnapshots(state, snapshots)
   const latest = new Map<AnnouncementId, PublicationOperation>()
+  const positionByOperationId = new Map<OperationId, number>()
 
-  for (const snapshot of snapshots) {
+  for (const [position, snapshot] of snapshots.entries()) {
     const operation = merged.operationsById.get(snapshot.operationId)
     if (!operation || operation.announcementId !== snapshot.announcementId) continue
+    positionByOperationId.set(operation.operationId, position)
 
     const candidate = latest.get(operation.announcementId)
-    // Prefer confirmed publication, then use creation order for equal timestamps.
+    // Prefer confirmed publication. The service lists attempts in creation order for timestamp ties.
     if (
       !candidate ||
       (operation.status === 'published' && candidate.status !== 'published') ||
@@ -142,8 +144,12 @@ function restoreOperations(
   for (const [announcementId, operation] of latest) {
     const activeId = state.activeOperationIdByAnnouncementId.get(announcementId)
     const active = activeId === undefined ? undefined : merged.operationsById.get(activeId)
-    // Preserve local attempts awaiting their first snapshot and confirmed successes.
-    if (activeId === undefined || (active?.status === 'rejected' && operation.createdAt > active.createdAt)) {
+    const followsRejectedAttempt = active?.status === 'rejected' && (
+      operation.createdAt > active.createdAt ||
+      (operation.createdAt === active.createdAt &&
+        (positionByOperationId.get(operation.operationId) ?? -1) > (positionByOperationId.get(active.operationId) ?? Infinity))
+    )
+    if (activeId === undefined || followsRejectedAttempt) {
       activeOperationIdByAnnouncementId ??= new Map(state.activeOperationIdByAnnouncementId)
       activeOperationIdByAnnouncementId.set(announcementId, operation.operationId)
     }
@@ -153,6 +159,7 @@ function restoreOperations(
     ...merged,
     activeOperationIdByAnnouncementId: activeOperationIdByAnnouncementId ?? state.activeOperationIdByAnnouncementId,
     recovery: { status: 'idle' },
+    hasRestoredPublications: true,
   }
 }
 

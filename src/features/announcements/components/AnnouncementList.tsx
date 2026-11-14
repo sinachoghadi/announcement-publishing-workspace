@@ -25,7 +25,7 @@ export default function AnnouncementList() {
       {workspace.recovery.status === 'error' && <p role="alert">{workspace.recovery.message}</p>}
       <ul>
         {state.announcements.map(({ id, title, body }) => {
-          const { operationId, displayStatus, operation, request, requestError, canPublish, canCheckStatus, canRetryPublication } =
+          const { operationId, displayStatus, operation, request, requestError, canPublish, canCheckStatus, canRetry, canRetryPublication } =
             workspace.getAnnouncementPublication(id)
 
           return (
@@ -40,9 +40,9 @@ export default function AnnouncementList() {
                 {operation?.status === 'rejected' && ` · ${operation.reason}`}
                 {requestError && ` · ${requestError}`}
               </p>
-              {canPublish && (
+              {(canPublish || canRetry) && (
                 <button type="button" onClick={() => void workspace.publishAnnouncement(id).catch(() => {})}>
-                  Publish
+                  {canRetry ? 'Start new publication attempt' : 'Publish'}
                 </button>
               )}
               {canRetryPublication && operationId !== undefined && (
