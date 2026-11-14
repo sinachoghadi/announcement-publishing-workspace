@@ -1,5 +1,5 @@
-import { useMemo, useReducer } from 'react'
-import { publicationReducer } from '../state/publicationReducer'
+import { useMemo, useReducer, useRef } from 'react'
+import { publicationReducer, type PublicationAction } from '../state/publicationReducer'
 import {
   selectActiveOperationId,
   selectCanCheckStatus,
@@ -14,7 +14,19 @@ import { initialPublicationState, type AnnouncementId, type OperationId } from '
 
 export function usePublicationWorkspace() {
   const [state, dispatch] = useReducer(publicationReducer, initialPublicationState)
-  const application = useMemo(() => ({ dispatch }), [dispatch])
+  const latestState = useRef(initialPublicationState)
+  const application = useMemo(() => ({
+    getState: () => latestState.current,
+    dispatch(action: PublicationAction) {
+      // Confirm application actions immediately, even when React batches rendering.
+      const next = publicationReducer(latestState.current, action)
+      if (next !== latestState.current) {
+        latestState.current = next
+        dispatch(action)
+      }
+      return next
+    },
+  }), [dispatch])
 
   return useMemo(() => ({
     getAnnouncementPublication(announcementId: AnnouncementId) {

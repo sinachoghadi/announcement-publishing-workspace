@@ -1,10 +1,20 @@
 import { AnnouncementMockError, type PublicationOperation } from '../../../mocks'
 import type { createAnnouncementService } from '../services/announcementService'
 import type { PublicationAction } from '../state/publicationReducer'
-import type { AnnouncementId, OperationId } from '../state/publicationTypes'
+import {
+  selectActiveOperationId,
+  selectCanPublish,
+  selectCanRetry,
+  selectPublicationRequest,
+} from '../state/publicationSelectors'
+import type { AnnouncementId, OperationId, PublicationState } from '../state/publicationTypes'
 
 type PublicationService = Pick<ReturnType<typeof createAnnouncementService>, 'publish' | 'getStatus'>
-type Dispatch = (action: PublicationAction) => void
+type PublicationStore = {
+  getState(): PublicationState
+  // Apply the action synchronously and return the resulting state.
+  dispatch(action: PublicationAction): PublicationState
+}
 
 let nextRequestId = 0
 
@@ -29,25 +39,44 @@ function describeFailure(error: unknown) {
   return { outcome: 'error', message: 'An unexpected error occurred while contacting the publication service.' } as const
 }
 
-export function createPublicationCoordinator(service: PublicationService, dispatch: Dispatch) {
+export function createPublicationCoordinator(service: PublicationService, { getState, dispatch }: PublicationStore) {
+  const publishing = new Set<AnnouncementId>()
+
   return {
-    // The caller supplies an operation ID after checking whether publication is allowed.
-    async publish(announcementId: AnnouncementId, operationId: OperationId) {
-      const request = { announcementId, operationId, requestId: `publication-${++nextRequestId}` }
-      dispatch({ type: 'operationStarted', announcementId, operationId })
-      dispatch({ type: 'publishStarted', ...request })
-
-      let operation: PublicationOperation
+    async publish(announcementId: AnnouncementId, existingOperationId?: OperationId) {
+      if (publishing.has(announcementId)) return
+      publishing.add(announcementId)
       try {
-        operation = await service.publish(announcementId, operationId)
-        requireMatchingOperation(operation, announcementId, operationId)
-      } catch (error) {
-        dispatch({ type: 'publishFailed', ...request, ...describeFailure(error) })
-        throw error
-      }
+        const state = getState()
+        let operationId = existingOperationId
+        if (operationId === undefined) {
+          if (!selectCanPublish(state, announcementId) && !selectCanRetry(state, announcementId)) return
+          operationId = crypto.randomUUID()
+          const registered = dispatch({ type: 'operationStarted', announcementId, operationId })
+          if (registered === state || selectActiveOperationId(registered, announcementId) !== operationId) return
+        } else if (selectActiveOperationId(state, announcementId) !== operationId) {
+          return
+        }
 
-      dispatch({ type: 'publishSucceeded', ...request, operation })
-      return operation
+        const request = { announcementId, operationId, requestId: `publication-${++nextRequestId}` }
+        const started = dispatch({ type: 'publishStarted', ...request })
+        const pending = selectPublicationRequest(started, operationId)
+        if (pending?.status !== 'publishing' || pending.requestId !== request.requestId) return
+
+        let operation: PublicationOperation
+        try {
+          operation = await service.publish(announcementId, operationId)
+          requireMatchingOperation(operation, announcementId, operationId)
+        } catch (error) {
+          dispatch({ type: 'publishFailed', ...request, ...describeFailure(error) })
+          throw error
+        }
+
+        dispatch({ type: 'publishSucceeded', ...request, operation })
+        return operation
+      } finally {
+        publishing.delete(announcementId)
+      }
     },
 
     async checkStatus(announcementId: AnnouncementId, operationId: OperationId) {
