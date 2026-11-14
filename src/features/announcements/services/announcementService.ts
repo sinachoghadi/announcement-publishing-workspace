@@ -1,8 +1,31 @@
-import { createAnnouncementMock, type IAnnouncement } from '../../../mocks'
+import { createAnnouncementMock, type IAnnouncementService } from '../../../mocks'
 
-let client: ReturnType<typeof createAnnouncementMock> | undefined
+type AnnouncementService = Pick<
+  IAnnouncementService,
+  'getAnnouncements' | 'publish' | 'getStatus' | 'listOperations'
+>
 
-export async function getAnnouncements(): Promise<IAnnouncement[]> {
-  client ??= createAnnouncementMock()
-  return client.getAnnouncements()
+let sharedClient: IAnnouncementService | undefined
+
+export function createAnnouncementService(client?: IAnnouncementService): AnnouncementService {
+  function getClient(): IAnnouncementService {
+    return client ?? (sharedClient ??= createAnnouncementMock())
+  }
+
+  return {
+    async getAnnouncements() {
+      return getClient().getAnnouncements()
+    },
+    async publish(announcementId, operationId) {
+      return getClient().publish(announcementId, operationId)
+    },
+    async getStatus(operationId) {
+      return getClient().getStatus(operationId)
+    },
+    async listOperations() {
+      return getClient().listOperations()
+    },
+  }
 }
+
+export const { getAnnouncements, publish, getStatus, listOperations } = createAnnouncementService()
