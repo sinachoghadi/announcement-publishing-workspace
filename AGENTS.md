@@ -100,6 +100,8 @@ Start the next task only when explicitly requested. Report a check as passing on
 
 With a supported Node.js version and npm available, run `npm ci` to install from the lockfile and `npm run dev` to start the application. Run `npm run lint` for ESLint, `npm run typecheck` for strict TypeScript checks, and `npm run build` for the production build. Use `npm run preview` to serve the built application locally.
 
+Run `npm test` in watch mode or `npm run test:run` for a single run. Keep tests near the corresponding feature code. Component tests use jsdom by default. Add `// @vitest-environment node` at the top of a pure logic test when it does not need browser APIs.
+
 ## Task completion format
 
 After each task, report:
