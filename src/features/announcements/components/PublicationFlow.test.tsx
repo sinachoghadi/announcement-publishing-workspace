@@ -1,11 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { createRef, useImperativeHandle, type Ref } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { createAnnouncementMock, type AnnouncementScenario, type IAnnouncement } from '../../../mocks'
+import {
+  AnnouncementMockError, createAnnouncementMock, type AnnouncementScenario, type IAnnouncement,
+} from '../../../mocks'
 import { usePublicationWorkspace } from '../hooks/usePublicationWorkspace'
 import * as service from '../services/announcementService'
 import { selectActiveOperationId } from '../state/publicationSelectors'
 import AnnouncementDetails from './AnnouncementDetails'
+import AnnouncementWorkspace from './AnnouncementWorkspace'
 import PublicationActions from './PublicationActions'
 import PublicationStatus from './PublicationStatus'
 
@@ -278,6 +281,149 @@ test('preserves a confirmed processing snapshot when the first status read fails
   await advance(100)
   expect(publication().operation).toEqual(snapshot)
   expect(publication().requestFailure).toBeUndefined()
+})
+
+test('keeps three overlapping publications independent while the selection changes', async () => {
+  const mock = createAnnouncementMock()
+  mock.setScenario('overlapping')
+  const publish = vi.spyOn(service, 'publish')
+  const readStatus = service.getStatus
+  let failedStatusCheck = false
+  vi.spyOn(service, 'getStatus').mockImplementation((operationId) => {
+    const [firstAnnouncementId, firstOperationId] = publish.mock.calls[0]
+    // The overlapping scenario itself does not fail status reads.
+    if (operationId === firstOperationId && !failedStatusCheck) {
+      failedStatusCheck = true
+      return Promise.reject(new AnnouncementMockError(
+        'STATUS_UNAVAILABLE', 'temporary-status-failure', operationId, firstAnnouncementId,
+      ))
+    }
+    return readStatus(operationId)
+  })
+  render(<AnnouncementWorkspace />)
+  await advance(100)
+
+  const [first, second, third] = screen.getAllByRole('radio')
+  const details = () => within(screen.getByRole('region', { name: 'Publication' }))
+  for (const option of [first, second, third]) {
+    fireEvent.click(option)
+    expect(option).toBeChecked()
+    const button = details().getByRole('button', { name: 'Publish' })
+    fireEvent.click(button)
+    if (option === first) fireEvent.click(button)
+  }
+
+  expect(publish.mock.calls.map(([id]) => id)).toEqual(['ann-101', 'ann-102', 'ann-103'])
+  expect(new Set(publish.mock.calls.map(([, id]) => id)).size).toBe(3)
+  for (const option of [first, second, third]) expect(option).toHaveAccessibleDescription('Submitting…')
+
+  await advance(80)
+  expect(first).toHaveAccessibleDescription('Submitting…')
+  expect(second).toHaveAccessibleDescription('Processing')
+  expect(third).toHaveAccessibleDescription('Submitting…')
+  await advance(120)
+  expect(first).toHaveAccessibleDescription('Submitting…')
+  expect(third).toHaveAccessibleDescription('Processing')
+  await advance(400)
+  expect(first).toHaveAccessibleDescription('Processing')
+
+  await advance(1680)
+  expect(second).toHaveAccessibleDescription('Published')
+  expect(first).toHaveAccessibleDescription('Processing')
+  expect(third).toHaveAccessibleDescription('Processing')
+
+  fireEvent.click(first)
+  await advance(420)
+  expect(details().getByRole('status')).toHaveTextContent(/status is temporarily unavailable/i)
+  expect(first).toHaveAccessibleDescription('Processing')
+  fireEvent.click(third)
+  expect(details().getByRole('status')).not.toHaveTextContent(/status is temporarily unavailable/i)
+
+  await advance(3900)
+  expect(third).toHaveAccessibleDescription('Published')
+  expect(first).toHaveAccessibleDescription('Processing')
+  await advance(4600)
+
+  const list = mock.listOperations()
+  await advance(100)
+  const snapshots = await list
+  expect(snapshots).toHaveLength(3)
+  for (const [index, option] of [first, second, third].entries()) {
+    const [announcementId, operationId] = publish.mock.calls[index]
+    const snapshot = snapshots.find((operation) => operation.operationId === operationId)
+    expect(snapshot).toMatchObject({ announcementId, status: 'published', version: 2 })
+    if (snapshot?.status !== 'published') throw new Error('Expected a published snapshot')
+    expect(option).toHaveAccessibleDescription('Published')
+    fireEvent.click(option)
+    expect(details().getByText(operationId)).toBeInTheDocument()
+    expect(details().getByText(snapshot.publicationId)).toBeInTheDocument()
+  }
+})
+
+test('preserves the published snapshot when the original slow publish response arrives', async () => {
+  const publish = vi.spyOn(service, 'publish')
+  const getStatus = vi.spyOn(service, 'getStatus')
+  const listOperations = vi.spyOn(service, 'listOperations')
+  const { announcement, mock, workspace, publication } = await openPublicationPanel('explicit-rejection')
+  await advance(100)
+  fireEvent.click(screen.getByRole('button', { name: 'Publish' }))
+  await advance(120)
+  const olderAttempt = publication().operation
+  expect(olderAttempt).toMatchObject({ status: 'rejected' })
+  if (olderAttempt?.status !== 'rejected') throw new Error('Expected the previous attempt to be rejected')
+
+  mock.setScenario('slow-response')
+  fireEvent.click(screen.getByRole('button', { name: 'New attempt' }))
+  const [, operationId] = publish.mock.calls[1]
+  expect(operationId).not.toBe(olderAttempt?.operationId)
+  let responseDelivered = false
+  const initialResponse = publish.mock.results[1].value.then((snapshot: Awaited<ReturnType<typeof service.publish>>) => {
+    responseDelivered = true
+    return snapshot
+  })
+
+  async function checkStatus() {
+    await act(async () => {
+      const check = workspace().checkStatus(announcement.id)
+      await vi.advanceTimersByTimeAsync(100)
+      await check
+    })
+  }
+
+  await checkStatus()
+  const processing = publication().operation
+  expect(processing).toMatchObject({ operationId, status: 'processing', version: 1 })
+
+  await act(async () => {
+    const recovery = workspace().refreshPublicationStatuses()
+    await vi.advanceTimersByTimeAsync(100)
+    await recovery
+  })
+  await expect(listOperations.mock.results[1].value).resolves.toEqual([olderAttempt, processing])
+  expect(publication().operationId).toBe(operationId)
+  expect(workspace().getOperation(olderAttempt.operationId)).toEqual(olderAttempt)
+
+  await advance(1300)
+  await checkStatus()
+  expect(responseDelivered).toBe(false)
+  expect(getStatus.mock.calls).toEqual([[operationId], [operationId]])
+  const confirmed = await getStatus.mock.results[1].value
+  expect(confirmed).toMatchObject({
+    announcementId: announcement.id, operationId, status: 'published', version: 2,
+    publicationId: expect.any(String), publishedAt: expect.any(String),
+  })
+  expect(publication().operation).toEqual(confirmed)
+
+  await advance(2900)
+  expect(responseDelivered).toBe(true)
+  await expect(initialResponse).resolves.toMatchObject({
+    announcementId: announcement.id, operationId, status: 'processing', version: 1,
+  })
+  expect(publication().operation).toEqual(confirmed)
+  expect(screen.getByRole('status')).toHaveTextContent('The service has confirmed publication.')
+  expect(screen.queryByRole('button', { name: 'Check status' })).not.toBeInTheDocument()
+  await advance(10_000)
+  expect(getStatus.mock.calls).toEqual([[operationId], [operationId]])
 })
 
 test.each([
