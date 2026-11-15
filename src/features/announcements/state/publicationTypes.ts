@@ -18,7 +18,11 @@ export type PublicationRequestState =
 
 export type PublicationRecoveryState =
   | { status: 'idle' }
-  | { status: 'loading'; requestId: string }
+  | {
+      status: 'loading'
+      requestId: string
+      requestsAtStart: PublicationState['requestsByOperationId']
+    }
   | { status: 'success' }
   | { status: 'error'; message: string; code?: AnnouncementErrorCode }
 

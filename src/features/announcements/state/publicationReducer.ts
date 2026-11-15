@@ -71,6 +71,7 @@ function canAcceptSnapshot(
 function mergeSnapshots(
   state: PublicationState,
   snapshots: readonly PublicationOperation[],
+  canSettleRequest: (operationId: OperationId) => boolean = () => true,
 ): PublicationState {
   let operations: Map<OperationId, PublicationOperation> | undefined
   let requests: Map<OperationId, PublicationRequestState> | undefined
@@ -80,10 +81,11 @@ function mergeSnapshots(
     const current = (operations ?? state.operationsById).get(operationId)
     const owner = current?.announcementId ?? findAnnouncementId(state, operationId)
     const request = (requests ?? state.requestsByOperationId).get(operationId)
+    const canSettle = canSettleRequest(operationId)
     if (!canAcceptSnapshot(snapshot, current, owner)) {
       // A current-version status read can resolve a communication error without replacing the snapshot.
       if (
-        current && snapshot.version === current.version &&
+        canSettle && current && snapshot.version === current.version &&
         matchesSnapshotIdentity(snapshot, current.operationId, owner) &&
         (request?.status === 'error' || request?.status === 'unconfirmed') &&
         request.code === 'STATUS_UNAVAILABLE'
@@ -96,6 +98,8 @@ function mergeSnapshots(
 
     operations ??= new Map(state.operationsById)
     operations.set(operationId, snapshot)
+    // A delayed processing response can add a snapshot without settling a newer request.
+    if (!canSettle && snapshot.status === 'processing') continue
     if (request && (
       snapshot.status !== 'processing' || request.status === 'unconfirmed' ||
       (request.status === 'error' && request.code === 'STATUS_UNAVAILABLE')
@@ -119,8 +123,11 @@ function mergeSnapshots(
 function restoreOperations(
   state: PublicationState,
   snapshots: readonly PublicationOperation[],
+  requestsAtStart: PublicationState['requestsByOperationId'],
 ): PublicationState {
-  const merged = mergeSnapshots(state, snapshots)
+  const merged = mergeSnapshots(state, snapshots, (id) =>
+    requestsAtStart.get(id) === state.requestsByOperationId.get(id),
+  )
   const latest = new Map<AnnouncementId, PublicationOperation>()
   const positionByOperationId = new Map<OperationId, number>()
 
@@ -224,9 +231,10 @@ export function publicationReducer(state: PublicationState, action: PublicationA
       }
 
       const status = action.type === 'publishSucceeded' ? 'publishing' : 'checking'
+      const matchingRequest = matchesRequest(state, action, status)
       // A matching response can settle its request even if its snapshot adds no information.
       let next = state
-      if (matchesRequest(state, action, status)) {
+      if (matchingRequest) {
         const previousFailure = selectPublicationRequestFailure(state, operationId)
         const missingSnapshot = !operation && (
           !state.operationsById.has(operationId) ||
@@ -238,7 +246,7 @@ export function publicationReducer(state: PublicationState, action: PublicationA
             { status: 'unconfirmed', message: 'The service has no record of this publication attempt.' }
           : { status: 'idle' })
       }
-      return operation ? mergeSnapshots(next, [operation]) : next
+      return operation ? mergeSnapshots(next, [operation], () => matchingRequest) : next
     }
     case 'publishFailed':
     case 'statusCheckFailed': {
@@ -286,12 +294,15 @@ export function publicationReducer(state: PublicationState, action: PublicationA
       return mergeSnapshots(state, [action.operation])
     case 'recoveryStarted':
       if (state.recovery.status === 'loading') return state
-      return { ...state, recovery: { status: 'loading', requestId: action.requestId } }
+      return {
+        ...state,
+        recovery: { status: 'loading', requestId: action.requestId, requestsAtStart: state.requestsByOperationId },
+      }
     case 'recoverySucceeded':
     case 'recoveryFailed':
       if (state.recovery.status !== 'loading' || state.recovery.requestId !== action.requestId) return state
       return action.type === 'recoverySucceeded'
-        ? restoreOperations(state, action.operations)
+        ? restoreOperations(state, action.operations, state.recovery.requestsAtStart)
         : { ...state, recovery: { status: 'error', message: action.message, code: action.code } }
   }
 }
