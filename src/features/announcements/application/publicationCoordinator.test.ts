@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest'
 import { AnnouncementMockError, type IAnnouncementService, type PublicationOperation } from '../../../mocks'
 import { publicationReducer, type PublicationAction } from '../state/publicationReducer'
 import {
-  selectOperation, selectPublicationDisplayStatus, selectPublicationRequestFailure,
+  selectActiveOperationId, selectOperation, selectPublicationDisplayStatus, selectPublicationRequestFailure,
 } from '../state/publicationSelectors'
 import { initialPublicationState } from '../state/publicationTypes'
 import { createPublicationCoordinator } from './publicationCoordinator'
@@ -39,7 +39,9 @@ async function startPublication() {
   const publishRequest = coordinator.publish(announcementId)
   const [, operationId] = publish.mock.calls[0]
   const processing = { operationId, announcementId, createdAt, status: 'processing', version: 1 } as const
-  return { coordinator, getStatus, getState, operationId, processing, publishRequest, publishResponse, statusResponse }
+  return {
+    coordinator, getStatus, getState, operationId, processing, publish, publishRequest, publishResponse, statusResponse,
+  }
 }
 
 test.each(['publish error first', 'status confirmation first'])(
@@ -103,4 +105,39 @@ test.each([
   getStatus.mockResolvedValueOnce(processing)
   await coordinator.checkStatus(announcementId, operationId)
   expect(selectPublicationRequestFailure(getState(), operationId)).toBeUndefined()
+})
+
+test('blocks duplicate submissions in the coordinator while a different announcement can publish', async () => {
+  const { coordinator, getState, operationId, processing, publish, publishRequest, publishResponse } =
+    await startPublication()
+  const secondAnnouncementId = 'ann-102'
+  const secondResponse = deferred<PublicationOperation>()
+  publish.mockImplementationOnce((id, registeredId) => {
+    expect(selectActiveOperationId(getState(), id)).toBe(registeredId)
+    return secondResponse.promise
+  })
+
+  const duplicates = [
+    coordinator.publish(announcementId),
+    coordinator.publish(announcementId),
+  ]
+  const secondRequest = coordinator.publish(secondAnnouncementId)
+  await expect(Promise.all(duplicates)).resolves.toEqual([undefined, undefined])
+  expect(publish).toHaveBeenCalledTimes(2)
+  const [secondOwner, secondId] = publish.mock.calls[1]
+  expect(secondOwner).toBe(secondAnnouncementId)
+  expect(secondId).not.toBe(operationId)
+  expect(selectActiveOperationId(getState(), announcementId)).toBe(operationId)
+
+  secondResponse.resolve({ ...processing, announcementId: secondAnnouncementId, operationId: secondId })
+  await secondRequest
+  expect(selectPublicationDisplayStatus(getState(), secondAnnouncementId)).toBe('processing')
+  expect(selectOperation(getState(), operationId)).toBeUndefined()
+
+  publishResponse.resolve(processing)
+  await publishRequest
+  expect(selectOperation(getState(), operationId)).toEqual(processing)
+  await expect(coordinator.publish(announcementId)).resolves.toBeUndefined()
+  await expect(coordinator.publish(secondAnnouncementId)).resolves.toBeUndefined()
+  expect(publish.mock.calls).toEqual([[announcementId, operationId], [secondAnnouncementId, secondId]])
 })

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { createRef, useImperativeHandle, type Ref } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import {
@@ -424,6 +424,54 @@ test('preserves the published snapshot when the original slow publish response a
   expect(screen.queryByRole('button', { name: 'Check status' })).not.toBeInTheDocument()
   await advance(10_000)
   expect(getStatus.mock.calls).toEqual([[operationId], [operationId]])
+})
+
+test('restores published and processing attempts on remount without starting new publications', async () => {
+  createAnnouncementMock().setScenario('success')
+  const publish = vi.spyOn(service, 'publish')
+  const getStatus = vi.spyOn(service, 'getStatus')
+  const first = 'ann-101'
+  const second = 'ann-102'
+  const original = renderHook(() => usePublicationWorkspace())
+  await advance(100)
+  await act(async () => {
+    const request = original.result.current.publishAnnouncement(first)
+    await vi.advanceTimersByTimeAsync(120)
+    await request
+  })
+  await advance(2500)
+  await act(async () => {
+    const check = original.result.current.checkStatus(first)
+    await vi.advanceTimersByTimeAsync(100)
+    await check
+  })
+  await act(async () => {
+    const request = original.result.current.publishAnnouncement(second)
+    await vi.advanceTimersByTimeAsync(120)
+    await request
+  })
+  const published = original.result.current.getAnnouncementPublication(first).operation
+  const processing = original.result.current.getAnnouncementPublication(second).operation
+  expect(published).toMatchObject({ status: 'published', operationId: expect.any(String) })
+  expect(processing).toMatchObject({ status: 'processing', operationId: expect.any(String) })
+  original.unmount()
+  getStatus.mockClear()
+
+  const refreshed = renderHook(() => usePublicationWorkspace())
+  await advance(100)
+  const publication = (id: string) => refreshed.result.current.getAnnouncementPublication(id)
+  expect(publication(first)).toMatchObject({ operation: published, canPublish: false })
+  expect(publication(second)).toMatchObject({ operation: processing, canPublish: false, canCheckStatus: true })
+  await expect(refreshed.result.current.publishAnnouncement(first)).resolves.toBeUndefined()
+  await expect(refreshed.result.current.publishAnnouncement(second)).resolves.toBeUndefined()
+  expect(publish).toHaveBeenCalledTimes(2)
+
+  await advance(4300)
+  expect(getStatus).toHaveBeenCalled()
+  expect(getStatus.mock.calls.every(([id]) => id === processing?.operationId)).toBe(true)
+  expect(publication(second).operation).toMatchObject({ status: 'published', operationId: processing?.operationId })
+  expect(publication(first).operation).toEqual(published)
+  expect(publish).toHaveBeenCalledTimes(2)
 })
 
 test.each([
