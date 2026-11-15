@@ -8,6 +8,8 @@ type AnnouncementService = Pick<
 let sharedClient: IAnnouncementService | undefined
 
 export function createAnnouncementService(client?: IAnnouncementService): AnnouncementService {
+  const statusReads = new Map<string, ReturnType<IAnnouncementService['getStatus']>>()
+
   function getClient(): IAnnouncementService {
     return client ?? (sharedClient ??= createAnnouncementMock())
   }
@@ -20,7 +22,16 @@ export function createAnnouncementService(client?: IAnnouncementService): Announ
       return getClient().publish(announcementId, operationId)
     },
     async getStatus(operationId) {
-      return getClient().getStatus(operationId)
+      // A status request can outlive the workspace that started it.
+      const pending = statusReads.get(operationId)
+      if (pending) return pending
+      const request = getClient().getStatus(operationId)
+      statusReads.set(operationId, request)
+      try {
+        return await request
+      } finally {
+        statusReads.delete(operationId)
+      }
     },
     async listOperations() {
       return getClient().listOperations()
