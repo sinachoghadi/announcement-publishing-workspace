@@ -1,5 +1,157 @@
 # Announcement Publishing Workspace
 
+## Project Overview
+
+A React workspace for the Ganjeh frontend assignment. A communications team can
+read three prepared announcements, submit them for publication, and follow each
+attempt while working on other announcements. The supplied service simulates
+publication and retains attempts across a refresh in the same browser tab.
+
+## Tech Stack
+
+React 19 with functional components and hooks, strict TypeScript, Vite, npm,
+and standard CSS. ESLint checks TypeScript and React Hooks. Vitest and React
+Testing Library run logic and component tests, with jsdom for browser APIs.
+
+## Getting Started
+
+Use a supported Node.js version from `package.json` and its bundled npm.
+Supported versions are Node.js 20.19+ in the 20.x line, 22.13+ in the 22.x line,
+or 24 and later. Run these commands from the repository root.
+
+```sh
+npm ci
+npm run dev
+```
+
+Open the local URL printed by Vite. Use a browser with session storage available.
+The app uses `crypto.randomUUID()`, which is available on localhost and HTTPS.
+
+## Available Scripts
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the Vite development server. |
+| `npm run typecheck` | Check the TypeScript projects in strict mode without emitting JavaScript. |
+| `npm run lint` | Run ESLint. |
+| `npm test` | Run Vitest in watch mode. |
+| `npm run test:run` | Run the full test suite once. |
+| `npm run build` | Type-check and build the production bundle into `dist/`. |
+| `npm run preview` | Serve the existing production build locally. Run the build first. |
+
+## Features
+
+- Read the full content of each announcement and switch selection while other
+  publications are in progress.
+- Follow each announcement's publication state independently through polling
+  and manual status checks.
+- Retry an unconfirmed request safely, start a fresh attempt after a confirmed
+  rejection, and restore recorded attempts after a refresh.
+
+## Architecture Overview
+
+| Layer | Responsibility |
+| --- | --- |
+| [Presentation](src/features/announcements/components) | Renders the list, details, publication feedback, and available actions. The workspace owns the selected announcement ID. |
+| [Application](src/features/announcements/application) | The coordinator runs service requests and dispatches results. The polling scheduler manages timer and status-check lifecycles. [Hooks](src/features/announcements/hooks) bind these flows to React. |
+| [Domain state](src/features/announcements/state) | The reducer applies immutable state transitions and guards snapshots. Selectors derive display status and action eligibility. |
+| [Infrastructure](src/features/announcements/services/announcementService.ts) | The adapter delegates to the public [mock API](src/mocks/index.ts) and shares in-flight status reads for the same operation. |
+
+## Key Technical Decisions
+
+- **Workspace-local state.** A single `useReducer` instance covers the workspace,
+  so a separate store would add little. The hook keeps a synchronous reference
+  to the latest reducer state so rapid submissions see an attempt immediately,
+  even when React batches rendering.
+- **Operation identity.** The reducer stores snapshots and request state by
+  `operationId` and tracks the active attempt by `announcementId`. The coordinator
+  creates and registers a UUID before the first Publish request and guards
+  against concurrent submissions for the same announcement. A safe retry
+  reuses both IDs. A deliberate New attempt after rejection gets a fresh UUID
+  and preserves the previous attempt. Confirmed publication blocks new attempts.
+- **Out-of-order responses.** The reducer applies a shared identity and version
+  guard to Publish, Status, and Recovery snapshots. A version 1 processing
+  response cannot overwrite a version 2 terminal result. Request IDs and the
+  request state captured at recovery start protect newer request feedback.
+- **Controlled polling.** Each active processing or unconfirmed attempt can be
+  checked independently. Polling starts with a two-second delay, doubles the
+  delay after a check fails up to ten seconds, and resets after a successful read.
+  Manual checks share the same scheduler. Polling stops once an attempt becomes
+  terminal, loses its active slot, becomes ineligible after an identity error,
+  or the workspace unmounts.
+
+## Error Handling & Recovery
+
+Service snapshots report `processing`, `published`, or `rejected`. Request state
+tracks progress and communication failures separately. `Unconfirmed` is derived
+for display when the outcome is uncertain. A confirmed rejection includes the
+service's reason.
+
+| Service error | Workspace behavior |
+| --- | --- |
+| `RESPONSE_LOST` | Preserve the operation ID. Check its status or safely retry with the same IDs. |
+| `STATUS_UNAVAILABLE` | Preserve the last valid snapshot and allow another status check. A failed list request can be retried from the recovery toolbar. |
+| `UNKNOWN_ANNOUNCEMENT` | Show that the service does not recognize the announcement. The request is not retried automatically. |
+| `OPERATION_ID_CONFLICT` | Show the conflict and avoid automatic retries or new IDs. Recovery can restore the service's recorded owner. |
+
+On mount, `listOperations()` restores recorded operations and polling resumes
+for eligible attempts. Recovery sends no Publish requests. New attempts are
+blocked while recovery is pending or failed, and valid snapshots already in
+memory are retained. Unmount clears polling timers and guards state updates from
+late responses while service-side publication can continue.
+
+## Testing
+
+```sh
+npm run typecheck
+npm run lint
+npm run test:run
+npm run build
+```
+
+Tests are colocated with the feature. Reducer tests cover stale and duplicate
+snapshots, identity mismatches, and safe recovery merges. Coordinator and
+integration tests cover request ordering, duplicate submissions, same-ID retry,
+recovery after remount, and cleanup of timers and in-flight requests.
+
+| Mock scenario | Covered behavior |
+| --- | --- |
+| `success` | Processing reaches Published and another publication is blocked. |
+| `explicit-rejection` | The reason is retained and an explicit new attempt can start. |
+| `lost-response` | The UI shows Unconfirmed and recovery or retry keeps the original ID. |
+| `status-check-failure` | A temporary read failure preserves valid state. Later checks or recovery can succeed. |
+| `overlapping` | Different announcements progress independently while the user changes selection. |
+| `slow-response` | A late processing snapshot leaves the newer published result intact. |
+
+The workspace starts with the mock's default `success` scenario in a fresh tab.
+Tests select scenarios through the public `setScenario()` method. Scenario
+selection is a test and development utility.
+
+## Assumptions
+
+- The three service-provided announcements are fixed. The workspace supports
+  reading and publishing them. Creation, editing, and deletion are outside scope.
+- One confirmed publication per announcement is sufficient. A new attempt is
+  allowed after confirmed rejection.
+- Selection can reset on refresh. Operation records belong to the simulator and
+  are restored through its public API.
+
+## Known Limitations
+
+- The project runs against the supplied simulator. A real backend, authentication,
+  and deployment configuration are outside the assignment scope.
+- Persistence is limited to the same browser tab and origin. Closing the tab or
+  clearing its storage can end recovery. Cross-tab, cross-device, and offline
+  recovery are outside scope.
+- Status updates rely on browser requests. Background-tab timer throttling can
+  delay automatic updates, and a temporarily unavailable recovery list may take
+  several manual retries.
+
+<details>
+<summary>Original Ganjeh assignment brief</summary>
+
+# Announcement Publishing Workspace
+
 ## Overview
 
 Build a small announcement publishing workspace using **React and TypeScript**.
@@ -163,7 +315,7 @@ but are not a required product feature.
 ### Essential TypeScript Contracts
 
 All public definitions are exported through `mocks/index.ts`; full contracts are in
-[`mocks/contracts.ts`](mocks/contracts.ts).
+[`mocks/contracts.ts`](src/mocks/contracts.ts).
 
 ```ts
 interface IAnnouncement {
@@ -223,3 +375,5 @@ and explain those decisions briefly. If something remains incomplete, describe
 what is missing and how you would approach it.
 
 AI assistants are permitted. Documentation and other development tools may also be used.
+
+</details>
