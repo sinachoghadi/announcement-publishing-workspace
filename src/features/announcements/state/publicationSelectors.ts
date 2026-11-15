@@ -42,10 +42,6 @@ export function selectPublicationRequestFailure(state: PublicationState, operati
   if (request?.status === 'error' || request?.status === 'unconfirmed') return request
 }
 
-export function selectPublicationRequestError(state: PublicationState, operationId: OperationId) {
-  return selectPublicationRequestFailure(state, operationId)?.message
-}
-
 export function selectPublicationDisplayStatus(
   state: PublicationState,
   announcementId: AnnouncementId,
@@ -90,22 +86,20 @@ export function selectCanCheckStatus(state: PublicationState, announcementId: An
 
 export type PublicationActionButton = {
   action: 'publish' | 'retry' | 'check-status' | 'new-attempt'
-  label: string
   disabled: boolean
   busy: boolean
-  primary: boolean
 }
 
 export function selectPublicationActions(state: PublicationState, announcementId: AnnouncementId): PublicationActionButton[] {
   const operationId = selectActiveOperationId(state, announcementId)
   if (operationId === undefined) {
-    return [{ action: 'publish', label: 'Publish', disabled: !selectCanPublish(state, announcementId), busy: false, primary: true }]
+    return [{ action: 'publish', disabled: !selectCanPublish(state, announcementId), busy: false }]
   }
 
   const status = selectPublicationStatus(state, announcementId)
   if (status === 'published') return []
   if (status === 'rejected') {
-    return [{ action: 'new-attempt', label: 'New attempt', disabled: !selectCanRetry(state, announcementId), busy: false, primary: true }]
+    return [{ action: 'new-attempt', disabled: !selectCanStartNewAttempt(state, announcementId), busy: false }]
   }
 
   const request = selectPublicationRequest(state, operationId)
@@ -119,23 +113,19 @@ export function selectPublicationActions(state: PublicationState, announcementId
   if (publishing || retry) {
     buttons.push({
       action: retry ? 'retry' : 'publish',
-      label: publishing ? (retry ? 'Retrying…' : 'Publishing…') : 'Retry request',
       disabled: publishing || !selectCanRetryPublication(state, announcementId),
       busy: publishing,
-      primary: true,
     })
   }
   buttons.push({
     action: 'check-status',
-    label: checking ? 'Checking…' : 'Check status',
     disabled: publishing || !selectCanCheckStatus(state, announcementId),
     busy: checking,
-    primary: buttons.length === 0,
   })
   return buttons
 }
 
-export function selectCanRetry(state: PublicationState, announcementId: AnnouncementId) {
+export function selectCanStartNewAttempt(state: PublicationState, announcementId: AnnouncementId) {
   return state.recovery.status === 'success' &&
     selectPublicationStatus(state, announcementId) === 'rejected' &&
     !selectHasPublished(state, announcementId)

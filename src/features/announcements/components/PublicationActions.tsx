@@ -1,4 +1,5 @@
 import type { usePublicationWorkspace } from '../hooks/usePublicationWorkspace'
+import type { PublicationActionButton } from '../state/publicationSelectors'
 import type { AnnouncementId } from '../state/publicationTypes'
 
 type Workspace = ReturnType<typeof usePublicationWorkspace>
@@ -7,6 +8,13 @@ type PublicationActionsProps = {
   announcementId: AnnouncementId
   publication: ReturnType<Workspace['getAnnouncementPublication']>
   workspace: Pick<Workspace, 'publishAnnouncement' | 'retryPublication' | 'checkStatus'>
+}
+
+const labels: Record<PublicationActionButton['action'], { idle: string; busy?: string }> = {
+  publish: { idle: 'Publish', busy: 'Publishing…' },
+  retry: { idle: 'Retry request', busy: 'Retrying…' },
+  'check-status': { idle: 'Check status', busy: 'Checking…' },
+  'new-attempt': { idle: 'New attempt' },
 }
 
 export default function PublicationActions({ announcementId, publication, workspace }: PublicationActionsProps) {
@@ -35,10 +43,10 @@ export default function PublicationActions({ announcementId, publication, worksp
 
   return (
     <div className="publication-actions" role="group" aria-label="Publication actions">
-      {publication.actions.map(({ action, label, disabled, busy, primary }) => (
+      {publication.actions.map(({ action, disabled, busy }, index) => (
         <button
           key={action}
-          className={primary ? 'primary-action' : undefined}
+          className={index === 0 ? 'primary-action' : undefined}
           type="button"
           disabled={disabled && !busy}
           aria-disabled={disabled}
@@ -47,7 +55,7 @@ export default function PublicationActions({ announcementId, publication, worksp
             if (!disabled) void execute(action)
           }}
         >
-          {label}
+          {(busy ? labels[action].busy : undefined) ?? labels[action].idle}
         </button>
       ))}
     </div>

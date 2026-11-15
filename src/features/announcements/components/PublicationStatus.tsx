@@ -1,5 +1,5 @@
 import type { PublicationOperation } from '../../../mocks'
-import type { PublicationDisplayStatus } from '../state/publicationSelectors'
+import { isPublicationIdentityError, type PublicationDisplayStatus } from '../state/publicationSelectors'
 import type { PublicationRequestFailure, PublicationRequestState } from '../state/publicationTypes'
 
 const statuses = {
@@ -39,8 +39,7 @@ export default function PublicationStatus({
   const feedback = requestFailure?.code
     ? errorMessages[requestFailure.code]
     : requestFailure ? 'The service could not be contacted. Check the status of this attempt again.' : undefined
-  const errorFeedback = terminal && requestFailure &&
-    (requestFailure.code === undefined || requestFailure.code === 'RESPONSE_LOST' || requestFailure.code === 'STATUS_UNAVAILABLE')
+  const errorFeedback = terminal && requestFailure && !isPublicationIdentityError(requestFailure.code)
     ? 'A previous service request could not be completed. The confirmed publication result is shown above.'
     : feedback
 

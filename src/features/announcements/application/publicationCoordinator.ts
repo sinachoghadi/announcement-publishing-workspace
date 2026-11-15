@@ -1,17 +1,16 @@
-import { AnnouncementMockError, type PublicationOperation } from '../../../mocks'
-import type { createAnnouncementService } from '../services/announcementService'
+import { AnnouncementMockError, type IAnnouncementService, type PublicationOperation } from '../../../mocks'
 import type { PublicationAction } from '../state/publicationReducer'
 import {
   selectActiveOperationId,
   selectCanCheckStatus,
   selectCanPublish,
-  selectCanRetry,
   selectCanRetryPublication,
+  selectCanStartNewAttempt,
   selectPublicationRequest,
 } from '../state/publicationSelectors'
 import type { AnnouncementId, OperationId, PublicationState } from '../state/publicationTypes'
 
-type PublicationService = Pick<ReturnType<typeof createAnnouncementService>, 'publish' | 'getStatus' | 'listOperations'>
+type PublicationService = Pick<IAnnouncementService, 'publish' | 'getStatus' | 'listOperations'>
 type PublicationStore = {
   getState(): PublicationState
   // Apply the action synchronously and return the resulting state.
@@ -58,7 +57,7 @@ export function createPublicationCoordinator(service: PublicationService, { getS
       const state = getState()
       let operationId = existingOperationId
       if (operationId === undefined) {
-        if (!selectCanPublish(state, announcementId) && !selectCanRetry(state, announcementId)) return
+        if (!selectCanPublish(state, announcementId) && !selectCanStartNewAttempt(state, announcementId)) return
         operationId = crypto.randomUUID()
         const registered = dispatch({ type: 'operationStarted', announcementId, operationId })
         if (registered === state || selectActiveOperationId(registered, announcementId) !== operationId) return

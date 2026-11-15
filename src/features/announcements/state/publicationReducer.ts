@@ -59,15 +59,6 @@ function matchesSnapshotIdentity(
     (announcementId === undefined || snapshot.announcementId === announcementId)
 }
 
-function canAcceptSnapshot(
-  snapshot: PublicationOperation,
-  current: PublicationOperation | undefined,
-  announcementId: AnnouncementId | undefined,
-) {
-  return matchesSnapshotIdentity(snapshot, current?.operationId ?? snapshot.operationId, announcementId) &&
-    (current === undefined || snapshot.version > current.version)
-}
-
 function mergeSnapshots(
   state: PublicationState,
   snapshots: readonly PublicationOperation[],
@@ -80,13 +71,14 @@ function mergeSnapshots(
     const { operationId } = snapshot
     const current = (operations ?? state.operationsById).get(operationId)
     const owner = current?.announcementId ?? findAnnouncementId(state, operationId)
+    if (!matchesSnapshotIdentity(snapshot, current?.operationId ?? operationId, owner)) continue
+
     const request = (requests ?? state.requestsByOperationId).get(operationId)
     const canSettle = canSettleRequest(operationId)
-    if (!canAcceptSnapshot(snapshot, current, owner)) {
+    if (current && snapshot.version <= current.version) {
       // A current-version status read can resolve a communication error without replacing the snapshot.
       if (
-        canSettle && current && snapshot.version === current.version &&
-        matchesSnapshotIdentity(snapshot, current.operationId, owner) &&
+        canSettle && snapshot.version === current.version &&
         (request?.status === 'error' || request?.status === 'unconfirmed') &&
         request.code === 'STATUS_UNAVAILABLE'
       ) {
@@ -120,11 +112,39 @@ function mergeSnapshots(
   }
 }
 
-function restoreOperations(
+function releaseConflictedAttempts(
   state: PublicationState,
+  snapshots: readonly PublicationOperation[],
+): PublicationState {
+  let activeIds: Map<AnnouncementId, OperationId> | undefined
+  let requests: Map<OperationId, PublicationRequestState> | undefined
+
+  for (const { operationId, announcementId } of snapshots) {
+    const request = state.requestsByOperationId.get(operationId)
+    if (request?.status !== 'error' || request.code !== 'OPERATION_ID_CONFLICT' ||
+      state.operationsById.has(operationId)) continue
+
+    const provisionalOwner = findAnnouncementId(state, operationId)
+    if (provisionalOwner === undefined || provisionalOwner === announcementId) continue
+
+    // The list confirms the service owner, so discard the failed local reservation.
+    activeIds ??= new Map(state.activeOperationIdByAnnouncementId)
+    requests ??= new Map(state.requestsByOperationId)
+    activeIds.delete(provisionalOwner)
+    requests.delete(operationId)
+  }
+
+  return activeIds && requests
+    ? { ...state, activeOperationIdByAnnouncementId: activeIds, requestsByOperationId: requests }
+    : state
+}
+
+function restoreOperations(
+  previous: PublicationState,
   snapshots: readonly PublicationOperation[],
   requestsAtStart: PublicationState['requestsByOperationId'],
 ): PublicationState {
+  const state = releaseConflictedAttempts(previous, snapshots)
   const merged = mergeSnapshots(state, snapshots, (id) =>
     requestsAtStart.get(id) === state.requestsByOperationId.get(id),
   )

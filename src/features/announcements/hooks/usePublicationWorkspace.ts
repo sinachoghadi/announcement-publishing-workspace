@@ -7,12 +7,10 @@ import {
   selectActiveOperationId,
   selectCanCheckStatus,
   selectCanPublish,
-  selectCanRetry,
-  selectCanRetryPublication,
+  selectCanStartNewAttempt,
   selectOperation,
   selectPublicationDisplayStatus,
   selectPublicationRequest,
-  selectPublicationRequestError,
   selectPublicationRequestFailure,
   selectPublicationActions,
 } from '../state/publicationSelectors'
@@ -106,12 +104,10 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
         operation: operationId === undefined ? undefined : selectOperation(state, operationId),
         displayStatus: selectPublicationDisplayStatus(state, announcementId),
         request: operationId === undefined ? undefined : selectPublicationRequest(state, operationId),
-        requestError: operationId === undefined ? undefined : selectPublicationRequestError(state, operationId),
         requestFailure: operationId === undefined ? undefined : selectPublicationRequestFailure(state, operationId),
         canPublish: selectCanPublish(state, announcementId),
         canCheckStatus: selectCanCheckStatus(state, announcementId),
-        canRetry: selectCanRetry(state, announcementId),
-        canRetryPublication: selectCanRetryPublication(state, announcementId),
+        canRetry: selectCanStartNewAttempt(state, announcementId),
         actions: selectPublicationActions(state, announcementId),
       }
     },
@@ -121,7 +117,6 @@ export function usePublicationWorkspace({ pollIntervalMs = 2000, maxPollInterval
     checkStatus,
     refreshPublicationStatuses,
     recovery: state.recovery,
-    // The workspace passes this interface to application logic.
     application,
   }), [state, application, publishAnnouncement, retryPublication, checkStatus, refreshPublicationStatuses])
 }
